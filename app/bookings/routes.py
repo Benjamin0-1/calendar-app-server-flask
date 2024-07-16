@@ -150,29 +150,25 @@ def create_property():
     data = request.get_json()
     property_name = data.get('property_name')
 
-    # Get JWT token
-    jwt_token = request.headers.get('Authorization').split()[1]
-
-    # Decode JWT token to get the full payload
-    jwt_payload = decode_token(jwt_token)
-
-    # Extract user ID and other necessary information
-    current_user_id = jwt_payload.get('id')  # Extract user ID from decoded JWT payload
-
-    # Convert user ID to integer if necessary
-    try:
-        current_user_id = int(current_user_id)
-    except ValueError:
-        return jsonify({"error": "Invalid user id format"}), 400
-
-    if not data.get('property_name'):
+    if not property_name:
         return jsonify({"error": "Missing property_name in request data"}), 400
 
-    # Assuming User model exists with SQLAlchemy
-    user = User.query.get(current_user_id)
+    jwt_token = request.headers.get('Authorization').split()[1] 
+
+    try:
+        jwt_payload = decode_token(jwt_token)
+        current_user_id = jwt_payload.get('id')
+        current_user_id = int(current_user_id) # avoid type error.
+    except Exception as e:
+        return jsonify({"error": "Invalid Json web token", "details": str(e)}), 500
     
+    user = User.query.get(current_user_id)
     if not user:
         return jsonify({"error": "User not found"}), 404
+
+    property_exists = Property.query.filter_by(property_name=property_name).first()
+    if property_exists:
+        return jsonify({"error": f"Property: {property_name} already exists."}), 409
     
     new_property = Property(property_name=property_name, user_id=current_user_id)
 
@@ -188,7 +184,11 @@ def create_property():
                 "user_id": new_property.user_id
             }
         }), 201
-
+    
     except Exception as e:
-        db.session.rollback()
+        db.session.rollback() # not necessary, just in case.
         return jsonify({"error": "Failed to create property", "details": str(e)}), 500
+
+    
+
+# new route in which the user can see all of his properties.
