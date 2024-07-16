@@ -3,9 +3,11 @@ from app.models import BookedDate, User, Property, DeletedDate
 from . import bookings
 from app import db
 from flask_jwt_extended import jwt_required, get_jwt_identity, decode_token
+from datetime import datetime, timedelta
+import time
 
 @bookings.route('/', methods=['GET'])
-@jwt_required()  # Ensure the user is authenticated
+@jwt_required()  
 def view_user_bookings():
     current_user = get_jwt_identity()
     user = User.query.filter_by(email=current_user).first()
@@ -13,6 +15,10 @@ def view_user_bookings():
     if not user:
         return jsonify({"error": "User not found"}), 404
     
+    # we need to include the relation with Property, so that
+    # the user can see all of the info properly:
+    # each date booked and the property that booked date belongs to.
+    # or the other way around would work very similarly.
     user_bookings = BookedDate.query.filter_by(user=user).all()
 
     if len(user_bookings) == 0:
@@ -36,14 +42,27 @@ def view_user_bookings():
 @jwt_required()  
 def book_date():
     data = request.get_json()
-    current_user_id = get_jwt_identity() # extract id specifically, currently getting the email.
-    print(current_user_id)
+
+    jwt_token = request.headers.get('Authorization').split()[1]
 
     try:
-        current_user_id = int(current_user_id)  # Convert to integer if necessary
-        property_id = int(data['property_id'])  # Convert property_id to integer
-    except ValueError:
-        return jsonify({"error": "Invalid user or property ID format"}), 400
+        jwt_payload = decode_token(jwt_token)
+        current_user_id = jwt_payload.get('id')
+        current_user_id = int(current_user_id)  
+        property_id = int(data.get('property_id'))  
+        customer_name = data.get('customer_name')  
+        booking_date = datetime.strptime(data.get('date'), '%Y-%m-%d').date()
+    except Exception as e:
+        return jsonify({"error": "Invalid user or property ID format", "details": str(e)}), 400
+    
+    #make sure a date is not from the past.
+    current_date = datetime.utcnow().date()
+    if booking_date < current_date:
+        return jsonify({"error": "Can't book a date from the past."}), 400
+
+    # Check if customer_name is provided
+    if not customer_name:
+        return jsonify({"error": "Customer name is required"}), 400
 
     # Verify if the property belongs to the current user
     property = Property.query.filter_by(id=property_id, user_id=current_user_id).first()
@@ -54,7 +73,7 @@ def book_date():
     # Check if such date is already booked for this property by the same user
     existing_booking = BookedDate.query.filter_by(
         user_id=current_user_id,
-        date=data['date'],
+        date=data.get('date'),
         property_id=property_id
     ).first()
 
@@ -63,17 +82,21 @@ def book_date():
 
     # Create a new booking
     new_booking = BookedDate(
-        date=data['date'],
-        customer_name=data['customer_name'],
+        date=data.get('date'),
+        customer_name=customer_name,
         user_id=current_user_id,
         property_id=property_id
     )
-    
-    db.session.add(new_booking)
-    db.session.commit()
 
-    return jsonify({"success": "Booking created successfully", "booking": new_booking.serialize()}), 201
+    try:
+        db.session.add(new_booking)
+        db.session.commit()
 
+        return jsonify({"success": "Booking created successfully", "booking": new_booking.serialize()}), 201
+
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"error": "Failed to create booking", "details": str(e)}), 500
 
 
 # we can update a booking customer name, date, and that's it (for now).
