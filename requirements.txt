@@ -1,0 +1,3 @@
+Flask-Migrate
+JWT
+scheduler 
