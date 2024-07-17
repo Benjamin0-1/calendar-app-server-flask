@@ -41,12 +41,20 @@ def view_user_bookings():
             })
 
         # Add property details and bookings to response dictionary
-        response_dict[property.property_name] = {
-            "id": property.id,
-            "bookings": bookings_list
-        }
+        if bookings_list:
+            response_dict[property.property_name] = {
+                "id": property.id,
+                "bookings": bookings_list
+            }
+        else:
+            response_dict[property.property_name] = {
+                "id": property.id,
+                "bookings": [],
+                "message": "No dates booked for this property yet"
+            }
 
     return jsonify(response_dict)
+
 
 
 
