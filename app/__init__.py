@@ -6,6 +6,7 @@ from flask_jwt_extended import JWTManager
 import os
 from datetime import timedelta
 from flask_migrate import Migrate
+from sqlalchemy import UniqueConstraint
 
 db = SQLAlchemy()
 mail = Mail()

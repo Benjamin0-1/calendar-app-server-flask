@@ -9,29 +9,33 @@ import time
 @bookings.route('/', methods=['GET'])
 @jwt_required()  
 def view_user_bookings():
-    current_user = get_jwt_identity()
-    user = User.query.filter_by(email=current_user).first()
+    current_user_email = get_jwt_identity()
+    
+    # Get the user by email
+    user = User.query.filter_by(email=current_user_email).first()
     
     if not user:
         return jsonify({"error": "User not found"}), 404
-    
-    # we need to include the relation with Property, so that
-    # the user can see all of the info properly:
-    # each date booked and the property that booked date belongs to.
-    # or the other way around would work very similarly.
-    user_bookings = BookedDate.query.filter_by(user=user).all()
 
-    if len(user_bookings) == 0:
+    # Query all bookings for the current user
+    user_bookings = BookedDate.query.filter_by(user_id=user.id).all()
+
+    if not user_bookings:
         return jsonify({"noDatesFound": True}), 404
-    
-    # Example: Assuming you want to return a list of booked dates with their details
+
+    # Create a list of bookings with property details
     bookings_list = []
     for booking in user_bookings:
+        property = Property.query.get(booking.property_id) # passed the id from the user_id obtained above.
+        # we could also flip this if necessary.
         bookings_list.append({
             "date": booking.date,
             "customer_name": booking.customer_name,
-            "property_id": booking.property_id
-        })
+            "property": {
+                "id": property.id,
+                "property_name": property.property_name,
+            }
+        }), 200
 
     return jsonify(bookings_list)
 
