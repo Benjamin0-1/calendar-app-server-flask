@@ -9,35 +9,45 @@ import time
 @bookings.route('/', methods=['GET'])
 @jwt_required()  
 def view_user_bookings():
-    current_user_email = get_jwt_identity()
+    jwt_token = request.headers.get('Authorization').split()[1]
+    jwt_payload = decode_token(jwt_token)
+    current_user_id = jwt_payload.get('id')
     
-    # Get the user by email
-    user = User.query.filter_by(email=current_user_email).first()
+    # Get the user by ID
+    user = User.query.get(current_user_id)
     
     if not user:
         return jsonify({"error": "User not found"}), 404
 
-    # Query all bookings for the current user
-    user_bookings = BookedDate.query.filter_by(user_id=user.id).all()
+    user_properties = Property.query.filter_by(user_id=current_user_id).all()
 
-    if not user_bookings:
-        return jsonify({"noDatesFound": True}), 404
+    if not user_properties:
+        return jsonify({"error": "User has no properties"}), 404
 
-    # Create a list of bookings with property details
-    bookings_list = []
-    for booking in user_bookings:
-        property = Property.query.get(booking.property_id) # passed the id from the user_id obtained above.
-        # we could also flip this if necessary.
-        bookings_list.append({
-            "date": booking.date,
-            "customer_name": booking.customer_name,
-            "property": {
-                "id": property.id,
-                "property_name": property.property_name,
-            }
-        }), 200
+    # Prepare the response dictionary
+    response_dict = {}
 
-    return jsonify(bookings_list)
+    # Iterate over each property to fetch bookings
+    for property in user_properties:
+        # Query bookings for the current property
+        bookings = BookedDate.query.filter_by(property_id=property.id).all()
+
+        # Prepare bookings list for the current property
+        bookings_list = []
+        for booking in bookings:
+            bookings_list.append({
+                "customer_name": booking.customer_name,
+                "date": booking.date.strftime("%a, %d %b %Y")  # Format date as desired
+            })
+
+        # Add property details and bookings to response dictionary
+        response_dict[property.property_name] = {
+            "id": property.id,
+            "bookings": bookings_list
+        }
+
+    return jsonify(response_dict)
+
 
 
 
