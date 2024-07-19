@@ -10,10 +10,7 @@ from .utils import get_user_id # to not have to manually extract the id everytim
 @bookings.route('/', methods=['GET'])
 @jwt_required()  
 def view_user_bookings():
-    #current_user_id = get_user_id() <=
-    jwt_token = request.headers.get('Authorization').split()[1]
-    jwt_payload = decode_token(jwt_token)
-    current_user_id = jwt_payload.get('id')
+    current_user_id = get_user_id() 
     
     # Get the user by ID
     user = User.query.get(current_user_id)
@@ -128,14 +125,11 @@ def book_date():
 def update_booking():
     data = request.json
     property_id = data.get('property_id')
-    current_date = data.get('current_date')
+    current_date = data.get('current_date') # date to be updated, it must exists for the specific property selected.
     customer_name = data.get('customer_name')
     new_date = data.get('new_date')
 
-    # Extract user_id from JWT
-    jwt_token = request.headers.get('Authorization').split()[1]
-    decoded_token = decode_token(jwt_token)
-    current_user_id = decoded_token.get('id')
+    current_user_id = get_user_id()
 
     if not property_id or not current_date:
         return jsonify({"message": "Missing property id or current date"}), 400
@@ -183,7 +177,7 @@ def update_booking():
 
 
 
-# this need to be FINISHED. <=
+# this need to be tested. <=
 @bookings.route('/', methods=['DELETE'])
 @jwt_required()
 def delete_booking():
@@ -192,9 +186,7 @@ def delete_booking():
     date = data.get('date')
 
     # Extract user_id from JWT
-    jwt_token = request.headers.get('Authorization').split()[1]
-    decoded_token = decode_token(jwt_token)
-    current_user_id = decoded_token.get('id')
+    current_user_id = get_user_id()
 
     if not property_id or not date:
         return jsonify({"error": "Both property ID and date are required"}), 400
@@ -210,14 +202,15 @@ def delete_booking():
         return jsonify({"error": "Booking not found"}), 404
 
     try:
+        # DeletedDate needs to first be created.
         # Create a copy of the booking in the DeletedDate model
-        deleted_booking = DeletedDate(
-            customer_name=booking.customer_name,
-            date=booking.date,
-            property_id=booking.property_id,
-            user_id=booking.user_id
-        )
-        db.session.add(deleted_booking)
+    #    deleted_booking = DeletedDate(
+    #        customer_name=booking.customer_name,
+    #        date=booking.date,
+    #        property_id=booking.property_id,
+    #        user_id=booking.user_id
+    #    )
+    #    db.session.add(deleted_booking)
 
         # Delete the booking from the BookedDate model
         db.session.delete(booking)
