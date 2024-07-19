@@ -125,42 +125,38 @@ def book_date():
 @jwt_required()
 def update_booking():
     data = request.json
-    booking_id = data.get('id')
     property_id = data.get('property_id')
+    current_date = data.get('current_date')
     customer_name = data.get('customer_name')
-    date = data.get('date')
+    new_date = data.get('new_date')
 
-    # extract user_id from jwt
+    # Extract user_id from JWT
     jwt_token = request.headers.get('Authorization').split()[1]
     decoded_token = decode_token(jwt_token)
     current_user_id = decoded_token.get('id')
 
-    if not booking_id or not property_id:
-        return jsonify({"message": "Missing booking id or property id"}), 400
-    
-    # check that the user owns the property they are trying to update anything for.
+    if not property_id or not current_date:
+        return jsonify({"message": "Missing property id or current date"}), 400
+
+    # Check that the user owns the property they are trying to update
     property = Property.query.filter_by(id=property_id, user_id=current_user_id).first()
     if not property:
         return jsonify({"error": "You don't own this property"}), 400
 
     # Check if the booking exists
-    booking = BookedDate.query.get(booking_id)
+    booking = BookedDate.query.filter_by(property_id=property_id, date=current_date).first()
     if not booking:
         return jsonify({"dateNotFound": "Booking to be updated doesn't exist."}), 404
 
-    # Check if the booking belongs to the specified property
-    if booking.property_id != property_id:
-        return jsonify({"error": "Booking does not belong to the specified property"}), 400
-
-   
-    if not customer_name and not date:
+    # Check if at least one parameter to be updated is provided
+    if not customer_name and not new_date:
         return jsonify({"missingData": "Must provide at least one parameter to be updated"}), 400
-    
-  
+
+    # Update the booking with the provided data only
     if customer_name:
         booking.customer_name = customer_name
-    if date:
-        booking.date = date
+    if new_date:
+        booking.date = new_date
 
     try:
         db.session.commit()
@@ -170,38 +166,36 @@ def update_booking():
         return jsonify({"error": "Failed to update booking", "details": str(e)}), 500
 
 
-# this need to be FINISHED.
+
+
+# this need to be FINISHED. <=
 @bookings.route('/', methods=['DELETE'])
 @jwt_required()
 def delete_booking():
     data = request.json
-    booking_id = data.get('id')
     property_id = data.get('property_id')
+    date = data.get('date')
 
-     # Extract user_id from jwt
+    # Extract user_id from JWT
     jwt_token = request.headers.get('Authorization').split()[1]
     decoded_token = decode_token(jwt_token)
     current_user_id = decoded_token.get('id')
 
-    if not booking_id or not property_id:
-        return jsonify({"error": "Both booking ID and property ID are required"}), 400
-    
-    # check that the user owns the property they are trying to delete a booking from.
+    if not property_id or not date:
+        return jsonify({"error": "Both property ID and date are required"}), 400
+
+    # Check that the user owns the property they are trying to delete a booking from
     property = Property.query.filter_by(id=property_id, user_id=current_user_id).first()
     if not property:
         return jsonify({"error": "You don't own this property"}), 403
 
-  
-    booking = BookedDate.query.get(booking_id)
+    # Check if the booking exists
+    booking = BookedDate.query.filter_by(property_id=property_id, date=date).first()
     if not booking:
         return jsonify({"error": "Booking not found"}), 404
 
-    # Check if the booking belongs to the specified property
-    if booking.property_id != property_id:
-        return jsonify({"error": "Booking does not belong to the specified property"}), 400
-
     try:
-        # Create a copy of the booking in DeletedDate model
+        # Create a copy of the booking in the DeletedDate model
         deleted_booking = DeletedDate(
             customer_name=booking.customer_name,
             date=booking.date,
@@ -210,7 +204,7 @@ def delete_booking():
         )
         db.session.add(deleted_booking)
 
-        
+        # Delete the booking from the BookedDate model
         db.session.delete(booking)
         db.session.commit()
 
@@ -218,6 +212,7 @@ def delete_booking():
     except Exception as e:
         db.session.rollback()
         return jsonify({"error": "Failed to delete booking", "details": str(e)}), 500
+
 
     
 
