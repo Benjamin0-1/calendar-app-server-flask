@@ -25,8 +25,9 @@ class BookedDate(db.Model):
             "property_id": self.property_id
         }
 
-
+# we also need the propertyname, not as a relation but as a copy of it.
 class DeletedDate(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     date = db.Column(db.Date, nullable=False)
     customer_name = db.Column(db.String(100), nullable=False)
+   # property_name = db.Column(db.String(100), nullable=False) 

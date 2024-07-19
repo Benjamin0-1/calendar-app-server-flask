@@ -177,7 +177,7 @@ def update_booking():
 
 
 
-# this need to be tested. <=
+# DeletedDate inside of /models/booking.py
 @bookings.route('/', methods=['DELETE'])
 @jwt_required()
 def delete_booking():
