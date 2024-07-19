@@ -152,11 +152,24 @@ def update_booking():
     if not customer_name and not new_date:
         return jsonify({"missingData": "Must provide at least one parameter to be updated"}), 400
 
-    # Update the booking with the provided data only
+    # Validate and format new_date if provided
+    if new_date: # if provided.
+        try:
+            new_date_format = datetime.strptime(new_date, '%Y-%m-%d').date()
+        except ValueError:
+            return jsonify({"error": "Invalid date format. Use YYYY-MM-DD."}), 400
+        
+        # Ensure the new_date is not in the past
+        today_date = datetime.utcnow().date()
+        if new_date_format < today_date:
+            return jsonify({"error": "New date cannot be from the past."}), 400
+        
+        # Update the booking date
+        booking.date = new_date_format
+
+    # Update customer name if provided
     if customer_name:
         booking.customer_name = customer_name
-    if new_date:
-        booking.date = new_date
 
     try:
         db.session.commit()
@@ -264,3 +277,6 @@ def create_property():
     
 
 # new route in which the user can see all of his properties.
+
+
+# new route to see all of the deleted bookings/dates.
