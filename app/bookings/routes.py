@@ -178,10 +178,20 @@ def delete_booking():
     booking_id = data.get('id')
     property_id = data.get('property_id')
 
+     # Extract user_id from jwt
+    jwt_token = request.headers.get('Authorization').split()[1]
+    decoded_token = decode_token(jwt_token)
+    current_user_id = decoded_token.get('id')
+
     if not booking_id or not property_id:
         return jsonify({"error": "Both booking ID and property ID are required"}), 400
+    
+    # check that the user owns the property they are trying to delete a booking from.
+    property = Property.query.filter_by(id=property_id, user_id=current_user_id).first()
+    if not property:
+        return jsonify({"error": "You don't own this property"}), 403
 
-    # Check if the booking exists
+  
     booking = BookedDate.query.get(booking_id)
     if not booking:
         return jsonify({"error": "Booking not found"}), 404
@@ -200,7 +210,7 @@ def delete_booking():
         )
         db.session.add(deleted_booking)
 
-        # Delete the booking from BookedDate model
+        
         db.session.delete(booking)
         db.session.commit()
 
