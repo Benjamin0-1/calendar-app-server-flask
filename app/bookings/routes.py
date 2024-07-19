@@ -5,10 +5,12 @@ from app import db
 from flask_jwt_extended import jwt_required, get_jwt_identity, decode_token
 from datetime import datetime, timedelta
 import time
+from .utils import get_user_id # to not have to manually extract the id everytime.
 
 @bookings.route('/', methods=['GET'])
 @jwt_required()  
 def view_user_bookings():
+    #current_user_id = get_user_id() <=
     jwt_token = request.headers.get('Authorization').split()[1]
     jwt_payload = decode_token(jwt_token)
     current_user_id = jwt_payload.get('id')
