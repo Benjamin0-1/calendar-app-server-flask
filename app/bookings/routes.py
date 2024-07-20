@@ -276,4 +276,32 @@ def create_property():
 def user_properties():
     pass
 
-# new route to see all of the deleted bookings/dates.
+# the user can see a history of deleted bookings
+@bookings.route('/view-deleted-bookings', methods=['GET'])
+@jwt_required()
+def view_deleted_bookings():
+    current_user_id = get_user_id()
+    
+    
+    deleted_bookings = DeletedDate.query.all()
+
+    if not deleted_bookings:
+        return jsonify({"error": "No deleted bookings found"}), 404
+    
+    deleted_bookings_list = [booking.serialize() for booking in deleted_bookings] # i
+
+
+    #deleted_bookings_list = []
+    #for booking in deleted_bookings:
+        #deleted_bookings_list.append(booking.serialize())
+
+    '''
+    deleted_bookings_list = []
+    for deleted_booking in deleted_bookings:
+        deleted_bookings_list.append({
+            "date": deleted_booking.date.strftime("%a, %d %b %Y"),
+            "customer_name": deleted_booking.customer_name,
+            "property_name": deleted_booking.property_name
+        }) '''
+
+    return jsonify({"deleted_bookings": deleted_bookings_list})
