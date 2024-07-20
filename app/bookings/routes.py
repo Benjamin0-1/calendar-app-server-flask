@@ -204,13 +204,14 @@ def delete_booking():
     try:
         # DeletedDate needs to first be created.
         # Create a copy of the booking in the DeletedDate model
-    #    deleted_booking = DeletedDate(
-    #        customer_name=booking.customer_name,
-    #        date=booking.date,
-    #        property_id=booking.property_id,
-    #        user_id=booking.user_id
-    #    )
-    #    db.session.add(deleted_booking)
+        deleted_booking = DeletedDate(
+            customer_name=booking.customer_name,
+            date=booking.date,
+            property_id=booking.property_id,
+            user_id=booking.user_id,
+            property_name=property.property_name
+        )
+        db.session.add(deleted_booking)
 
         # Delete the booking from the BookedDate model
         db.session.delete(booking)

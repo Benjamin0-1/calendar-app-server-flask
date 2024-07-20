@@ -1,4 +1,5 @@
 from .. import db
+from sqlalchemy import UniqueConstraint
 
 class BookedDate(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -9,7 +10,7 @@ class BookedDate(db.Model):
 
     # YOU NEED TO IMPORT THIS.
     # unique convination of date and property.
-    #__table_args__ = (UniqueConstraint('date, 'property_id, name='unique_date_per_property'))
+    __table_args__ = (UniqueConstraint('date', 'property_id', name='unique_date_per_property'),)
 
     user = db.relationship('User', back_populates='booked_dates')
     property = db.relationship('Property', back_populates='booked_dates')
@@ -30,4 +31,4 @@ class DeletedDate(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     date = db.Column(db.Date, nullable=False)
     customer_name = db.Column(db.String(100), nullable=False)
-   # property_name = db.Column(db.String(100), nullable=False) 
+    property_name = db.Column(db.String(100), nullable=False) 
