@@ -237,9 +237,7 @@ def create_property():
     jwt_token = request.headers.get('Authorization').split()[1] 
 
     try:
-        jwt_payload = decode_token(jwt_token)
-        current_user_id = jwt_payload.get('id')
-        current_user_id = int(current_user_id) # avoid type error.
+        current_user_id = get_user_id()
     except Exception as e:
         return jsonify({"error": "Invalid Json web token", "details": str(e)}), 500
     
@@ -247,7 +245,8 @@ def create_property():
     if not user:
         return jsonify({"error": "User not found"}), 404
 
-    property_exists = Property.query.filter_by(property_name=property_name).first()
+    # fix 
+    property_exists = Property.query.filter_by(property_name=property_name, user_id=current_user_id).first()
     if property_exists:
         return jsonify({"error": f"Property: {property_name} already exists."}), 409
     

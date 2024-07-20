@@ -18,6 +18,7 @@ class Property(db.Model):
         return {
             "id": self.id,
             "property_name": self.property_name,
-            "user_id": self.user_id
+            "user_id": self.user_id,
+            'booked_dates': [booked_date.serialize() for booked_date in self.booked_dates]
         }
 

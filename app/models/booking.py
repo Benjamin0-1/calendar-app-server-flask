@@ -20,10 +20,11 @@ class BookedDate(db.Model):
 
     def serialize(self):
         return {
-            "id": self.id,
-            "date": self.date.isoformat(),
-            "customer_name": self.customer_name,
-            "property_id": self.property_id
+            'id': self.id,
+            'date': self.date.isoformat(),
+            'customer_name': self.customer_name,
+            'property_id': self.property_id,
+            'user_id': self.user_id
         }
 
 # we also need the propertyname, not as a relation but as a copy of it.
