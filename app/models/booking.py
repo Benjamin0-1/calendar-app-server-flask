@@ -33,3 +33,4 @@ class DeletedDate(db.Model):
     date = db.Column(db.Date, nullable=False)
     customer_name = db.Column(db.String(100), nullable=False)
     property_name = db.Column(db.String(100), nullable=False) 
+    #user_email = db.Column(db.String(200), nullable=False) # not required since every user will see their own info, they know their email.

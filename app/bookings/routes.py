@@ -207,9 +207,8 @@ def delete_booking():
         deleted_booking = DeletedDate(
             customer_name=booking.customer_name,
             date=booking.date,
-            property_id=booking.property_id,
-            user_id=booking.user_id,
             property_name=property.property_name
+            #user_email #<=
         )
         db.session.add(deleted_booking)
 
@@ -272,6 +271,9 @@ def create_property():
     
 
 # new route in which the user can see all of his properties.
-
+@bookings.route('/user-properties', methods=['GET'])
+@jwt_required
+def user_properties():
+    pass
 
 # new route to see all of the deleted bookings/dates.
