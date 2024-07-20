@@ -207,7 +207,8 @@ def delete_booking():
         deleted_booking = DeletedDate(
             customer_name=booking.customer_name,
             date=booking.date,
-            property_name=property.property_name
+            property_name=property.property_name,
+            user_id=current_user_id
             #user_email #<=
         )
         db.session.add(deleted_booking)
@@ -272,36 +273,94 @@ def create_property():
 
 # new route in which the user can see all of his properties.
 @bookings.route('/user-properties', methods=['GET'])
-@jwt_required
+@jwt_required()
 def user_properties():
-    pass
+    current_user_id = get_user_id()
 
-# the user can see a history of deleted bookings
+    # Query for the user's properties
+    user_properties = Property.query.filter_by(user_id=current_user_id).all()
+    
+    if not user_properties:
+        return jsonify({"error": "You have no properties yet."}), 404
+    
+    user_properties_list = []
+
+    # Serialize each property
+    for property in user_properties:
+        user_properties_list.append({
+            "id": property.id,
+            "property_name": property.property_name
+        })
+
+    return jsonify({"Your properties": user_properties_list})
+
+#DELETED BOOKNGS:
+
 @bookings.route('/view-deleted-bookings', methods=['GET'])
 @jwt_required()
 def view_deleted_bookings():
     current_user_id = get_user_id()
     
-    
-    deleted_bookings = DeletedDate.query.all()
+    deleted_bookings = DeletedDate.query.filter_by(user_id=current_user_id).all()
 
     if not deleted_bookings:
         return jsonify({"error": "No deleted bookings found"}), 404
     
-    deleted_bookings_list = [booking.serialize() for booking in deleted_bookings] # i
-
-
-    #deleted_bookings_list = []
-    #for booking in deleted_bookings:
-        #deleted_bookings_list.append(booking.serialize())
-
-    '''
-    deleted_bookings_list = []
-    for deleted_booking in deleted_bookings:
-        deleted_bookings_list.append({
-            "date": deleted_booking.date.strftime("%a, %d %b %Y"),
-            "customer_name": deleted_booking.customer_name,
-            "property_name": deleted_booking.property_name
-        }) '''
+    deleted_bookings_list = [booking.serialize() for booking in deleted_bookings]
 
     return jsonify({"deleted_bookings": deleted_bookings_list})
+
+
+
+@bookings.route('/delete-all-deleted-bookings', methods=['DELETE'])
+@jwt_required()
+def delete_all_deleted_bookings():
+    current_user_id = get_user_id()
+
+    try:
+        deleted_bookings = DeletedDate.query.filter_by(user_id=current_user_id).all() # get the array
+
+        if not deleted_bookings:
+            return jsonify({"message": "No deleted bookings found for the current user"}), 404
+
+        # check if in the array.
+        for booking in deleted_bookings:
+            db.session.delete(booking)
+
+        db.session.commit()
+        return jsonify({"message": "All deleted bookings have been removed successfully"}), 200
+
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"error": "Failed to delete all deleted bookings", "details": str(e)}), 500
+
+@bookings.route('/delete-deleted-booking', methods=['DELETE'])
+@jwt_required()
+def delete_deleted_booking():
+    data = request.get_json()
+    date_str = data.get('date')
+
+    if not date_str:
+        return jsonify({"error": "Date is required"}), 400
+
+    
+    try:
+        date = datetime.strptime(date_str, "%Y_%d_%m").date()
+    except ValueError:
+        return jsonify({"error": "Invalid date format. Use YYYY_DD_MM"}), 400
+
+    current_user_id = get_user_id()
+
+    try:
+        deleted_booking = DeletedDate.query.filter_by(date=date, user_id=current_user_id).first()
+
+        if not deleted_booking:
+            return jsonify({"error": "No deleted booking found for the given date"}), 404
+
+        db.session.delete(deleted_booking)
+        db.session.commit()
+        return jsonify({"message": "Deleted booking removed successfully"}), 200
+
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"error": "Failed to delete the booking", "details": str(e)}), 500

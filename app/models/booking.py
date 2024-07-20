@@ -32,8 +32,8 @@ class DeletedDate(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     date = db.Column(db.Date, nullable=False)
     customer_name = db.Column(db.String(100), nullable=False)
-    property_name = db.Column(db.String(100), nullable=False) 
-    #user_email = db.Column(db.String(200), nullable=False) # not required since every user will see their own info, they know their email.
+    property_name = db.Column(db.String(100), nullable=False)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)  
 
     def serialize(self):
         return {
@@ -42,4 +42,5 @@ class DeletedDate(db.Model):
             'customer_name': self.customer_name,
             'property_name': self.property_name
         }
+
     
