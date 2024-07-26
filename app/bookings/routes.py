@@ -271,7 +271,50 @@ def create_property():
         db.session.rollback() # not necessary, just in case.
         return jsonify({"error": "Failed to create property", "details": str(e)}), 500
 
-    
+
+@bookings.route('/delete-property', methods=['DELETE'])
+@jwt_required()
+def delete_property():
+    data = request.get_json()
+    property_id = data.get('property_id')
+
+    if not property_id:
+        return jsonify({"error": "Property ID is required"}), 400
+
+   
+    current_user_id = get_user_id()
+
+    # Check that the user owns the property they are trying to delete
+    property = Property.query.filter_by(id=property_id, user_id=current_user_id).first()
+    if not property:
+        return jsonify({"error": "You don't own this property"}), 403
+
+  
+    if not property:
+        return jsonify({"error": "Property not found"}), 404
+
+    try:
+        bookings = BookedDate.query.filter_by(property_id=property_id).all()
+        for booking in bookings:
+            deleted_booking = DeletedDate(
+                customer_name=booking.customer_name,
+                date=booking.date,
+                property_name=property.property_name,
+                user_id=current_user_id
+            )
+            db.session.add(deleted_booking)
+            db.session.delete(booking)
+        
+        # Delete the property
+        db.session.delete(property)
+        db.session.commit()
+
+        return jsonify({"message": "Property deleted successfully and associated bookings archived in DeletedDate model"})
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"error": "Failed to delete property", "details": str(e)}), 500
+
+
 
 # new route in which the user can see all of his properties.
 @bookings.route('/user-properties', methods=['GET'])
