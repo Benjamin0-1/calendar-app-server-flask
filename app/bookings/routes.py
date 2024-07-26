@@ -5,7 +5,8 @@ from app import db
 from flask_jwt_extended import jwt_required, get_jwt_identity, decode_token
 from datetime import datetime, timedelta
 import time
-from .utils import get_user_id # to not have to manually extract the user id everytime.
+from .utils import get_user_id # remove this one later and replace it with the one below.
+#from app.utils.get_user_id import get_user_id # <- this ONE.
 
 # WE ARE DONE HERE, FOR NOW.
 
@@ -83,7 +84,6 @@ def book_date():
     if booking_date < current_date:
         return jsonify({"error": "Can't book a date from the past."}), 400
 
-    # Check if customer_name is provided
     if not customer_name:
         return jsonify({"error": "Customer name is required"}), 400
 
@@ -366,3 +366,50 @@ def delete_deleted_booking():
     except Exception as e:
         db.session.rollback()
         return jsonify({"error": "Failed to delete the booking", "details": str(e)}), 500
+
+
+# dynamic filtering.
+@bookings.route('/filter-bookings')
+@jwt_required()
+def filter_bookings():
+    query = BookedDate.query
+
+   
+    current_user_id = get_user_id()
+
+    # this always filter by user_id, ensuring they can't manipulate the query.
+    query = query.filter(BookedDate.user_id == current_user_id)
+
+    property_name = request.args.get('property_name')
+    if property_name:
+        query = query.join(Property).filter(Property.property_name.ilike(f'%{property_name}%'))
+    
+    date_str = request.args.get('date')
+    if date_str:
+        try:
+            date = datetime.strptime(date_str, '%Y-%m-%d').date()
+            query = query.filter(BookedDate.date == date)
+        except ValueError:
+            return jsonify({'error': 'Invalid date format. Use YYYY-MM-DD.'}), 400
+
+    customer_name = request.args.get('customer_name')
+    if customer_name:
+        query = query.filter(BookedDate.customer_name.ilike(f'%{customer_name}%'))
+    
+    property_id = request.args.get('property_id')
+    if property_id:
+        try:
+            property_id = int(property_id)
+            query = query.filter(BookedDate.property_id == property_id)
+        except ValueError:
+            return jsonify({'error': 'Invalid property ID format.'}), 400
+
+    bookings = query.all()
+    results = [booking.serialize() for booking in bookings]
+
+    if len(results) == 0:
+        return jsonify({"error": "no bookings found"}), 404
+
+    return jsonify(results)
+
+

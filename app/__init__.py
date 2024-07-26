@@ -6,10 +6,11 @@ from flask_jwt_extended import JWTManager
 import os
 from datetime import timedelta
 from flask_migrate import Migrate
-from sqlalchemy import UniqueConstraint
+from sqlalchemy import UniqueConstraint, CheckConstraint, Index
 
 db = SQLAlchemy()
 mail = Mail()
+
 
 SECRET_KEY = os.environ.get('SECRET_KEY') or 'secret-key'
 SQLALCHEMY_DATABASE_URI = os.environ.get('DATABASE_URL') or 'postgresql://postgres:12241530@localhost/calendar-app'
@@ -21,7 +22,7 @@ def create_app():
     app = Flask(__name__)
     app.config['SECRET_KEY'] = SECRET_KEY
     app.config['SQLALCHEMY_DATABASE_URI'] = SQLALCHEMY_DATABASE_URI
-    app.config['MAIL_SERVER'] = 'smtp.example.com'
+    app.config['MAIL_SERVER'] = 'smtp.gmail.com'
     app.config['MAIL_PORT'] = 587
     app.config['MAIL_USE_TLS'] = True
     app.config['MAIL_USERNAME'] = os.environ.get('MAIL_USERNAME') or 'your-email@example.com'
@@ -49,14 +50,6 @@ def create_app():
 
     from app.bookings import bookings as bookings_blueprint
     app.register_blueprint(bookings_blueprint, url_prefix='/bookings')
-
-
-    if app.config['ENV'] == 'development':
-        with app.app_context():
-            ...
-            #db.reflect()
-            #db.drop_all()
-            #db.create_all()
          
 
     return app
