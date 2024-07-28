@@ -119,7 +119,7 @@ def refresh_token():
     access_token = create_access_token(identity=current_user, additional_claims=additional_claims)
     return jsonify(access_token=access_token)
 
-# "error": "Incorrect padding"
+
 @auth.route('/request-password-reset', methods=['POST'])
 def request_password_reset():
     data = request.get_json()
@@ -134,14 +134,10 @@ def request_password_reset():
         return jsonify({"error": "User not found"}), 404
     
     try:
-        # Ensure the OTP secret is properly encoded in Base32
-        otp_secret = os.environ.get('OTP_SECRET')
-        if not otp_secret:
-            otp_secret = pyotp.random_base32()
-            os.environ['OTP_SECRET'] = otp_secret
+        # Generate a unique OTP secret for the user
+        otp_secret_base32 = pyotp.random_base32() 
+        user.otp_secret = otp_secret_base32
         
-        # Convert the secret to Base32 and ensure it is properly padded
-        otp_secret_base32 = pyotp.random_base32()
         print(f"OTP SECRET: {otp_secret_base32}")  # Debug: Print the secret to verify it's correct
         
         otp = pyotp.TOTP(otp_secret_base32)
@@ -171,6 +167,7 @@ def request_password_reset():
 
 
 
+
 @auth.route('/reset-password', methods=['POST'])
 def reset_password():
     data = request.get_json()
@@ -190,8 +187,10 @@ def reset_password():
     if not user:
         return jsonify({"error": "No user with such email was found"}), 404
 
-    otp_secret_base32 = os.environ.get('OTP_SECRET')
-    otp = pyotp.TOTP(otp_secret_base32)
+    if not user.otp_secret:
+        return jsonify({"error": "User OTP secret is missing"}), 500
+
+    otp = pyotp.TOTP(user.otp_secret)
     if otp_code == user.otp and datetime.utcnow() < user.otp_expiration:
         try:
             # Update the user password
@@ -200,6 +199,7 @@ def reset_password():
             # and then CLEAN UP.
             user.otp = None  
             user.otp_expiration = None  
+            user.otp_secret = None  # Optionally clear the OTP secret if it's no longer needed
             db.session.commit()
 
             return jsonify({"message": "Password reset successfully"}), 200

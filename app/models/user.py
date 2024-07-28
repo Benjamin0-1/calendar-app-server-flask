@@ -5,7 +5,7 @@ import pyotp
 import os
 from sqlalchemy import UniqueConstraint, CheckConstraint
 
-otp_secret = os.environ.get('OTP_SECRET')
+#otp_secret = os.environ.get('OTP_SECRET')
 
 class User(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -16,6 +16,7 @@ class User(db.Model):
     email_confirmed = db.Column(db.Boolean, default=False)
     otp = db.Column(db.String(6), nullable=True)
     otp_expiration = db.Column(db.DateTime, nullable=True)
+    otp_secret = db.Column(db.String(32), nullable=True) #must be base32 encoded
 
     properties = db.relationship('Property', back_populates='owner')
     booked_dates = db.relationship('BookedDate', back_populates='user')
@@ -31,5 +32,8 @@ class User(db.Model):
         self.otp_expiration = datetime.utcnow() + timedelta(minutes=10)
 
     def generate_otp(self):
-        otp = pyotp.TOTP(otp_secret) 
+        if not self.otp_secret:
+            self.otp_secret = pyotp.random_base32()
+        # now set the user otp column
+        otp = pyotp.TOTP(self.otp_secret)
         return otp.now()
