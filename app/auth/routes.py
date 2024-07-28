@@ -270,26 +270,34 @@ def update_password():
     new_password = data.get('new_password')
     confirm_new_password = data.get('confirm_new_password')
 
-    # all fields are required.
+    # All fields are required.
     if not current_password or not new_password or not confirm_new_password:
         return jsonify({"error": "All fields are required"}), 400
     
     current_user_id = get_user_id()
     user = User.query.get_or_404(current_user_id) 
 
+    # Check if the current password is correct.
     if not user.check_password(current_password):
         return jsonify({"error": "Current password is incorrect"}), 403
     
+    # Check if the new passwords match.
     if new_password != confirm_new_password:
-        return jsonify({"error": "New passwords don't match"})
+        return jsonify({"error": "New passwords don't match"}), 400
+    
+    # Check if the new password is different from the current password.
+    if user.check_password(new_password):
+        return jsonify({"error": "New password cannot be the same as the current password"}), 400
     
     try:
         user.set_password(new_password)
         db.session.commit()
 
-        return jsonify({"message": "Password updated successfully"})
+        return jsonify({"message": "Password updated successfully"}), 200
     except Exception as e:
+        db.session.rollback()
         return jsonify({"error": str(e)}), 500
+
 
 
 '''
