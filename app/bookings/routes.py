@@ -15,7 +15,6 @@ from .utils import get_user_id # remove this one later and replace it with the o
 def view_user_bookings():
     current_user_id = get_user_id() 
     
-    # Get the user by ID
     user = User.query.get(current_user_id)
     
     if not user:
@@ -26,30 +25,28 @@ def view_user_bookings():
     if not user_properties:
         return jsonify({"error": "User has no properties"}), 404
 
-    # Prepare the response dictionary
     response_dict = {}
-
-    # Iterate over each property to fetch bookings
+   
     for property in user_properties:
-        # Query bookings for the current property
-        bookings = BookedDate.query.filter_by(property_id=property.id).all()
+      
+        bookings = BookedDate.query.filter_by(property_id=property.id).all() # all of the bookings asssociated to each user property.
 
-        # Prepare bookings list for the current property
-        bookings_list = []
+        # now we have all of the bookings, if any.
+        bookings_list = []  # going to be an array inside of the response.
         for booking in bookings:
             bookings_list.append({
                 "customer_name": booking.customer_name,
-                "date": booking.date.strftime("%a, %d %b %Y")  # Format date as desired
+                "date": booking.date.strftime("%a, %d %b %Y")  
             })
 
-        # Add property details and bookings to response dictionary
+        # if anything at all got appended (pushed).
         if bookings_list:
-            response_dict[property.property_name] = {
+            response_dict[property.property_name] = { # first time pushing to the dictionary.
                 "id": property.id,
-                "bookings": bookings_list
+                "bookings": bookings_list # push all bookings instead of one.
             }
         else:
-            response_dict[property.property_name] = {
+            response_dict[property.property_name] = { # property_name is the key, what goes below would be the "value".
                 "id": property.id,
                 "bookings": [],
                 "message": "No dates booked for this property yet"
@@ -61,7 +58,7 @@ def view_user_bookings():
 
 
 
-# book a date
+
 @bookings.route('/', methods=['POST'])
 @jwt_required()  
 def book_date():
@@ -454,5 +451,4 @@ def filter_bookings():
         return jsonify({"error": "no bookings found"}), 404
 
     return jsonify(results)
-
 

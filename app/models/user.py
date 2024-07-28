@@ -37,3 +37,10 @@ class User(db.Model):
         # now set the user otp column
         otp = pyotp.TOTP(self.otp_secret)
         return otp.now()
+    
+    def serialize(self):
+        return {
+        'first_name': self.first_name,
+        'last_name': self.last_name,
+        'email': self.email
+        }

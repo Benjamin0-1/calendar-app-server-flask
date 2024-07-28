@@ -211,7 +211,85 @@ def reset_password():
         return jsonify({"error": "Invalid OTP or it has expired"}), 403
 
 
+@auth.route('/user-profile')
+@jwt_required()
+def view_user_profile():
+    current_user_id = get_user_id()
+    user = User.query.get(current_user_id)
+    if not user:
+        return jsonify({"error": "User not found"}), 404
+    
+    return jsonify(user.serialize()), 200 
 
+
+@auth.route('/update-profile', methods=['PATCH'])
+@jwt_required()
+def update_profile():
+    data = request.get_json()
+    first_name = data.get('first_name')
+    last_name = data.get('last_name')
+    
+    if not first_name and not last_name:
+        return jsonify({"error": "At least one parameter to be updated is required"}), 400
+    
+    current_user_id = get_user_id()  
+    user = User.query.get(current_user_id)
+    
+    if not user:
+        return jsonify({"error": "User not found"}), 404
+    
+    try:
+        updated = False
+        
+        if first_name and first_name != user.first_name:
+            user.first_name = first_name
+            updated = True
+            
+        if last_name and last_name != user.last_name:
+            user.last_name = last_name
+            updated = True
+            
+        if updated:
+            db.session.commit()
+            return jsonify({"message": "Profile updated successfully"}), 200
+        else:
+            return jsonify({"message": "No changes detected"}), 400
+    
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"error": str(e)}), 500
+
+
+
+
+@auth.route('/update-password', methods=['PUT'])
+@jwt_required()
+def update_password():
+    data = request.get_json()
+    current_password = data.get('current_password')
+    new_password = data.get('new_password')
+    confirm_new_password = data.get('confirm_new_password')
+
+    # all fields are required.
+    if not current_password or not new_password or not confirm_new_password:
+        return jsonify({"error": "All fields are required"}), 400
+    
+    current_user_id = get_user_id()
+    user = User.query.get_or_404(current_user_id) 
+
+    if not user.check_password(current_password):
+        return jsonify({"error": "Current password is incorrect"}), 403
+    
+    if new_password != confirm_new_password:
+        return jsonify({"error": "New passwords don't match"})
+    
+    try:
+        user.set_password(new_password)
+        db.session.commit()
+
+        return jsonify({"message": "Password updated successfully"})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 
 '''
