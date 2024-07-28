@@ -20,7 +20,7 @@ class User(db.Model):
     properties = db.relationship('Property', back_populates='owner')
     booked_dates = db.relationship('BookedDate', back_populates='user')
 
-    def set_password(self, password):
+    def set_password(self, password):   # used in /reset-password
         self.password_hash = generate_password_hash(password)
 
     def check_password(self, password):

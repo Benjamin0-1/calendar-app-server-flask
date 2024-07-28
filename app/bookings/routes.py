@@ -8,7 +8,7 @@ import time
 from .utils import get_user_id # remove this one later and replace it with the one below.
 #from app.utils.get_user_id import get_user_id # <- this ONE.
 
-# WE ARE DONE HERE, FOR NOW.
+# things left to here: nothing (up to the first release).
 
 @bookings.route('/', methods=['GET'])
 @jwt_required()  
@@ -226,7 +226,7 @@ def delete_booking():
 
 
     
-
+# create a property.
 @bookings.route('/create-property', methods=['POST'])
 @jwt_required()
 def create_property():
@@ -271,7 +271,7 @@ def create_property():
         db.session.rollback() # not necessary, just in case.
         return jsonify({"error": "Failed to create property", "details": str(e)}), 500
 
-
+# delete a property.
 @bookings.route('/delete-property', methods=['DELETE'])
 @jwt_required()
 def delete_property():

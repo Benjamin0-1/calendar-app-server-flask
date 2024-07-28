@@ -1,4 +1,6 @@
 from flask import request, jsonify, Blueprint
+from app import Limiter, get_remote_address
+
 from werkzeug.security import generate_password_hash, check_password_hash
 from app.models import User
 from app import db
@@ -20,6 +22,15 @@ from ..services.email_service import send_email # from app/services.
 # and re implement email-confirm.
 # add password reset.
 # for now : <- I will add a get email route to test its functionality.
+
+# don't use in-memory storage.
+#limiter = Limiter(key_func=get_remote_address)
+
+# NOT WORKING.
+#@auth.route('/test-limiter', methods=['GET'])
+#@limiter.limit('2 per minute')
+#def test_limiter():
+#    return jsonify({"message": "This is a test."})
 
 
 @auth.route('/login', methods=['POST'])
@@ -108,7 +119,7 @@ def refresh_token():
     access_token = create_access_token(identity=current_user, additional_claims=additional_claims)
     return jsonify(access_token=access_token)
 
-
+# "error": "Incorrect padding"
 @auth.route('/request-password-reset', methods=['POST'])
 def request_password_reset():
     data = request.get_json()
@@ -123,8 +134,20 @@ def request_password_reset():
         return jsonify({"error": "User not found"}), 404
     
     try:
-        otp = pyotp.TOTP(os.environ.get('OTP_SECRET'))
+        # Ensure the OTP secret is properly encoded in Base32
+        otp_secret = os.environ.get('OTP_SECRET')
+        if not otp_secret:
+            otp_secret = pyotp.random_base32()
+            os.environ['OTP_SECRET'] = otp_secret
+        
+        # Convert the secret to Base32 and ensure it is properly padded
+        otp_secret_base32 = pyotp.random_base32()
+        print(f"OTP SECRET: {otp_secret_base32}")  # Debug: Print the secret to verify it's correct
+        
+        otp = pyotp.TOTP(otp_secret_base32)
         otp_code = otp.now()
+        
+        print(f"Generated OTP Code: {otp_code}")  # Debug: Print the generated OTP
         
         # Assign OTP and expiration to the user
         user.otp = otp_code
@@ -141,7 +164,11 @@ def request_password_reset():
 
     except Exception as e:
         db.session.rollback()
+        print(f"Error: {e}")  # Detailed logging of the error
         return jsonify({"error": str(e)}), 500
+
+
+
 
 
 @auth.route('/reset-password', methods=['POST'])
@@ -163,11 +190,14 @@ def reset_password():
     if not user:
         return jsonify({"error": "No user with such email was found"}), 404
 
-    otp = pyotp.TOTP(os.environ.get('OTP_SECRET'))
+    otp_secret_base32 = os.environ.get('OTP_SECRET')
+    otp = pyotp.TOTP(otp_secret_base32)
     if otp_code == user.otp and datetime.utcnow() < user.otp_expiration:
         try:
             # Update the user password
-            user.password = generate_password_hash(new_password)  
+            user.set_password(new_password)  # Call the set_password method
+            print(f"NEW USER PASSWORD HASH: {user.password_hash}")
+            # and then CLEAN UP.
             user.otp = None  
             user.otp_expiration = None  
             db.session.commit()
@@ -179,6 +209,8 @@ def reset_password():
             return jsonify({"error": str(e)}), 500
     else:
         return jsonify({"error": "Invalid OTP or it has expired"}), 403
+
+
 
 
 
@@ -209,6 +241,7 @@ def expire_otps():
 scheduler = BackgroundScheduler()
 scheduler.add_job(func=expire_otps, trigger='interval', minutes=1)
 scheduler.start()
+# also add here the email reminder and whatever else.
 
 # Confirm email route
 @app.route('/confirm-email', methods=['POST'])
@@ -235,6 +268,68 @@ def confirm_email():
     user.otp = None
     user.otp_expiration = None
     db.session.commit()
+
+    
+
+            # NEW SIGNUP ROUTE: 
+    @auth.route('/signup', methods=['POST'])
+def signup():
+    data = request.get_json()
+    first_name = data.get('first_name')
+    last_name = data.get('last_name')
+    email = data.get('email')
+    password = data.get('password')
+
+    if not all([first_name, last_name, email, password]):
+        return jsonify({"missingData": True}), 400
+
+    email_regex = r'^[\w\.-]+@[\w\.-]+\.\w+$'
+    if not re.match(email_regex, email):
+        return jsonify({"invalidEmail": True}), 400
+
+    if User.query.filter_by(email=email).first():
+        return jsonify({"userAlreadyExists": True}), 400
+
+    try:
+        new_user = User(first_name=first_name, last_name=last_name, email=email)
+        new_user.set_password(password)
+        db.session.add(new_user)
+        db.session.commit()
+
+        otp = pyotp.TOTP(os.environ.get('OTP_SECRET'))
+        otp_code = otp.now()
+        new_user.otp = otp_code
+        new_user.otp_expiration = datetime.utcnow() + timedelta(minutes=10)
+        db.session.commit()
+
+        send_email(
+            subject='Confirm your email',
+            recipient=new_user.email,
+            body=f'Hello {new_user.first_name},\n\nPlease confirm your email using this OTP: {otp_code}. It expires in 10 minutes.'
+        )
+
+        return jsonify({"message": "User created successfully. Please check your email to confirm your account."}), 201
+
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"error": str(e)}), 500
+
+@auth.route('/confirm-email', methods=['POST'])
+def confirm_email():
+    data = request.get_json()
+    email = data.get('email')
+    otp = data.get('otp')
+    user = User.query.filter_by(email=email).first()
+
+    if not user or user.otp != otp or user.otp_expiration < datetime.utcnow():
+        return jsonify({"error": "Invalid or expired OTP"}), 400
+
+    user.email_confirmed = True
+    user.otp = None
+    user.otp_expiration = None
+    db.session.commit()
+
+    return jsonify({"message": "Email confirmed successfully"}), 200
 
 
 

@@ -3,9 +3,11 @@ from flask_sqlalchemy import SQLAlchemy
 from flask_mail import Mail
 from flask_cors import CORS
 from flask_jwt_extended import JWTManager
+from flask_migrate import Migrate
+from flask_limiter import Limiter
+from flask_limiter.util import get_remote_address
 import os
 from datetime import timedelta
-from flask_migrate import Migrate
 from sqlalchemy import UniqueConstraint, CheckConstraint, Index
 
 db = SQLAlchemy()
@@ -40,6 +42,9 @@ def create_app():
 
     # migrations
     migrate = Migrate(app, db)
+
+    #limiter
+    limiter = Limiter(get_remote_address, app=app)
 
     # Register Blueprints
     from app.main import main as main_blueprint
