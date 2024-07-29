@@ -10,6 +10,7 @@ import os
 from datetime import timedelta
 from sqlalchemy import UniqueConstraint, CheckConstraint, Index
 
+
 db = SQLAlchemy()
 mail = Mail()
 

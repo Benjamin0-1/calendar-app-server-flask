@@ -16,12 +16,14 @@ class User(db.Model):
     email_confirmed = db.Column(db.Boolean, default=False)
     otp = db.Column(db.String(6), nullable=True)
     otp_expiration = db.Column(db.DateTime, nullable=True)
-    otp_secret = db.Column(db.String(32), nullable=True) #must be base32 encoded
+    email_otp_expiration = db.Column(db.DateTime, nullable=True)  # Email confirmation
+    recovery_otp_expiration = db.Column(db.DateTime, nullable=True)  # OTP for the email confirm.
+    otp_secret = db.Column(db.String(32), nullable=True)  # must be base32 encoded
 
     properties = db.relationship('Property', back_populates='owner')
     booked_dates = db.relationship('BookedDate', back_populates='user')
 
-    def set_password(self, password):   # used in /reset-password
+    def set_password(self, password):  # used in /reset-password
         self.password_hash = generate_password_hash(password)
 
     def check_password(self, password):
@@ -40,7 +42,7 @@ class User(db.Model):
     
     def serialize(self):
         return {
-        'first_name': self.first_name,
-        'last_name': self.last_name,
-        'email': self.email
+            'first_name': self.first_name,
+            'last_name': self.last_name,
+            'email': self.email
         }
