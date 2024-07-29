@@ -299,12 +299,63 @@ def update_password():
         return jsonify({"error": str(e)}), 500
 
 
+# TEST THIS ROUTE <= AND SEE IF IT'S WELL THOUGHT OUT.
+@auth.route('/confirm-email', methods=['POST'])
+def confirm_email():
+    data = request.get_json()
+    email = data.get('email')
+    otp = data.get('otp')
+    user = User.query.filter_by(email=email).first()
+
+    if not user or user.email_otp != otp or user.email_otp_expiration < datetime.utcnow():
+        return jsonify({"error": "Invalid or expired OTP"}), 400
+
+    # Check if another user has already confirmed the email
+    confirmed_user = User.query.filter_by(email=email, email_confirmed=True).first()
+    if confirmed_user and confirmed_user.id != user.id:
+        return jsonify({"error": "This email is already confirmed by another user."}), 400
+
+    # Confirm the email for the current user
+    try:
+        user.email_confirmed = True
+        user.email_otp = None
+        user.email_otp_expiration = None
+        db.session.commit()
+        return jsonify({"message": "Email confirmed successfully"}), 200
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"error": str(e)}), 500
+
+
+
+#why do we need a scheduler to clean all of this up? 
+'''# Function to expire OTPs
+def expire_otps():
+    with app.app_context():
+        now = datetime.utcnow()
+        expired_users = User.query.filter(
+            (User.email_otp_expiration < now) | (User.recovery_otp_expiration < now)
+        ).all()
+        for user in expired_users:
+            if user.email_otp_expiration and user.email_otp_expiration < now:
+                user.email_otp = None
+                user.email_otp_expiration = None
+            if user.recovery_otp_expiration and user.recovery_otp_expiration < now:
+                user.recovery_otp = None
+                user.recovery_otp_expiration = None
+        db.session.commit()  # commit once to improve efficiency
+
+scheduler = BackgroundScheduler()
+scheduler.add_job(func=expire_otps, trigger='interval', minutes=1)
+scheduler.start()
+'''
+
 
 '''
 # Middleware to check if email is confirmed
 @app.before_request
 def check_email_confirmed():
-    if request.endpoint in ['login', 'signup', 'confirm_email']:  # allow these endpoints
+    if request.endpoint in ['login', 'signup', 'confirm_email', 'request_password_reset', 'reset_password']:  # allow these endpoints
         return
     
     verify_jwt_in_request(optional=True)
@@ -314,6 +365,7 @@ def check_email_confirmed():
         user = User.query.filter_by(email=current_user).first()
         if user and not user.email_confirmed:
             return jsonify({"error": "Email not confirmed"}), 403
+
 
 def expire_otps():
     with app.app_context():

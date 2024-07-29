@@ -11,7 +11,7 @@ class User(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     first_name = db.Column(db.String(100), nullable=False)
     last_name = db.Column(db.String(100), nullable=False)
-    email = db.Column(db.String(250), unique=True, nullable=False) #CHECK (email ~* '^[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}$')  
+    email = db.Column(db.String(250), unique=True, nullable=False, info={'check': 'email ~* \'^[a-z0-9._%+-]+@[a-z0-9.-]+\\.[a-z]{2,}$\''})  
     password_hash = db.Column(db.String(250), nullable=False)
     email_confirmed = db.Column(db.Boolean, default=False)
     otp = db.Column(db.String(6), nullable=True)
