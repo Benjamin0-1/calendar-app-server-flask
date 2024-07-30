@@ -1,6 +1,6 @@
 from flask import request, jsonify, Blueprint
-from app import Limiter, get_remote_address
-
+from app import Limiter
+from flask_limiter.util import get_remote_address
 from werkzeug.security import generate_password_hash, check_password_hash
 from app.models import User
 from app import db
@@ -14,25 +14,41 @@ import pyotp
 import os
 from datetime import datetime, timedelta
 from . import auth
+from flask_limiter import Limiter
+from flask_limiter.util import get_remote_address
 from ..utils.get_user_id import get_user_id  # from app/utils.
 from ..services.email_service import send_email # from app/services.
 
 
 # add brute force protection HERE
 # and re implement email-confirm.
-# add password reset.
-# for now : <- I will add a get email route to test its functionality.
 
 # don't use in-memory storage.
 #limiter = Limiter(key_func=get_remote_address)
 
 # NOT WORKING.
-#@auth.route('/test-limiter', methods=['GET'])
-#@limiter.limit('2 per minute')
-#def test_limiter():
-#    return jsonify({"message": "This is a test."})
+
+limiter = Limiter(key_func=get_remote_address)
+# Example route to test rate limiter
+@auth.route('/test-limiter', methods=['GET'])
+@limiter.limit('2 per minute')
+def test_limiter():
+    return jsonify({"message": "This is a test."})
 
 
+
+
+
+# Track failed login attempts
+failed_login_attempts = {}
+
+# Define the maximum number of allowed failed attempts
+MAX_FAILED_ATTEMPTS = 5
+
+# Define the lockout period in seconds
+LOCKOUT_PERIOD = 60
+
+# this is a temporary solution, it will be changed in the future.
 @auth.route('/login', methods=['POST'])
 def login():
     data = request.get_json()
@@ -47,8 +63,16 @@ def login():
     if not user:
         return jsonify({"userNotFound": True}), 404
     
+    # Check if the user is locked out due to too many failed attempts
+    if email in failed_login_attempts:
+        attempts_info = failed_login_attempts[email]
+        if attempts_info['attempts'] >= MAX_FAILED_ATTEMPTS:
+            lockout_time = attempts_info['lockout_time']
+            remaining_lockout_time = (lockout_time - datetime.now()).total_seconds()
+            if remaining_lockout_time > 0:
+                return jsonify({"lockedOut": True, "remainingLockoutTime": remaining_lockout_time}), 403
+    
     if user and user.check_password(password):
-   
         additional_claims = {
             'id': user.id,  
             'first_name': user.first_name,
@@ -56,9 +80,26 @@ def login():
         }
         access_token = create_access_token(identity=email, additional_claims=additional_claims)
         refresh_token = create_refresh_token(identity=email, additional_claims=additional_claims)
+        
+        # Reset failed login attempts for the user
+        if email in failed_login_attempts:
+            del failed_login_attempts[email]
+        
         return jsonify(access_token=access_token, refresh_token=refresh_token), 200
 
-    return jsonify({"invalidCredentials": True}), 401
+    # Otherwise, Increment failed login attempts for the user
+    if email in failed_login_attempts:
+        failed_login_attempts[email]['attempts'] += 1
+    else:
+        failed_login_attempts[email] = {'attempts': 1, 'lockout_time': None} # if first failed attempt
+    
+    # Check if the user has reached the maximum number of failed attempts
+    if failed_login_attempts[email]['attempts'] >= MAX_FAILED_ATTEMPTS: # if exceeded max attempts
+        failed_login_attempts[email]['lockout_time'] = datetime.now() + timedelta(seconds=LOCKOUT_PERIOD) # then lockout the user
+    
+    return jsonify({"invalidCredentials": True}), 401 # if invalid credentials, before being locked out.
+
+
 
 @auth.route('/signup', methods=['POST'])
 def signup():

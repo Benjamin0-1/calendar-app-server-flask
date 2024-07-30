@@ -48,4 +48,6 @@ def start_scheduler(app):
     scheduler.add_job(func=expire_otps, trigger='interval', minutes=1)
     scheduler.add_job(func=send_booking_reminders, trigger='interval', hours=1)
     scheduler.start()
+    def stop_scheduler(scheduler):
+        scheduler.shutdown()
     return scheduler
