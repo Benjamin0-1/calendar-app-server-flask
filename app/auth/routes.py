@@ -2,7 +2,7 @@ from flask import request, jsonify, Blueprint
 from app import Limiter
 from flask_limiter.util import get_remote_address
 from werkzeug.security import generate_password_hash, check_password_hash
-from app.models import User
+from app.models import User, LoginHistory
 from app import db
 from flask_jwt_extended import (
     create_access_token, create_refresh_token,
@@ -34,38 +34,7 @@ limiter = Limiter(key_func=get_remote_address)
 @auth.route('/test-limiter', methods=['GET'])
 @limiter.limit('2 per minute')
 def test_limiter():
-    return jsonify({"message": "This is a test."})
-
-
-def check_email_confirmed(f):
-    @wraps(f)
-    def decorated_function(*args, **kwargs):
-        print(f"Request endpoint: {request.endpoint}")  # Debugging line
-        exempt_routes = [
-            'auth.login', 'auth.signup', 'auth.confirm_email',
-            'auth.request_password_reset', 'auth.reset_password'
-        ]
-
-        if request.endpoint in exempt_routes:
-            print("Exempt route accessed.")  # Debugging line
-            return f(*args, **kwargs)
-
-        verify_jwt_in_request(optional=True)
-        current_user = get_jwt_identity()
-        print(f"Current user: {current_user}")  # Debugging line
-
-        if current_user:
-            user = User.query.filter_by(email=current_user).first()
-            if user and not user.email_confirmed:
-                print("Email not confirmed.")  # Debugging line
-                return jsonify({"error": "Email not confirmed"}), 403
-        
-        return f(*args, **kwargs)
-    
-    return decorated_function
-
-
-
+    return jsonify({"message": "This is a test."}), 200
 
 
 # Track failed login attempts
@@ -113,7 +82,82 @@ def login():
         # Reset failed login attempts for the user
         if email in failed_login_attempts:
             del failed_login_attempts[email]
-        
+
+        # Add it to the login history, if successful login.
+        login_record = LoginHistory(
+            login_time=datetime.utcnow(),
+            ip_address=request.remote_addr,
+            user_agent = request.headers.get('User-Agent'),
+            user_id=user.id
+        )
+        db.session.add(login_record)
+        db.session.commit()
+
+
+        # check if the user has previusly logged in from this ip address.
+        # in the future, this wil also use a geolocation API to check the location of the user.
+        # and the user agent.
+        # right now it will only check the ip address.
+        has_logged_in_before = LoginHistory.query.filter_by(user_id=user.id, ip_address=request.remote_addr).first()
+        if not has_logged_in_before:
+            
+            send_email(
+                subject='New Login Detected',
+                recipient=user.email,
+                body=f'''
+                    <html>
+                    <head>
+                        <style>
+                            body {{
+                                font-family: Arial, sans-serif;
+                                color: #333;
+                                background-color: #f4f4f4;
+                                margin: 0;
+                                padding: 0;
+                            }}
+                            .container {{
+                                max-width: 600px;
+                                margin: 0 auto;
+                                padding: 20px;
+                                background-color: #fff;
+                                border-radius: 8px;
+                                box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+                            }}
+                            h1 {{
+                                color: #4CAF50;
+                            }}
+                            p {{
+                                line-height: 1.6;
+                            }}
+                            .button {{
+                                display: inline-block;
+                                padding: 10px 20px;
+                                font-size: 16px;
+                                color: #fff;
+                                background-color: #4CAF50;
+                                text-decoration: none;
+                                border-radius: 5px;
+                                margin-top: 20px;
+                            }}
+                            .footer {{
+                                margin-top: 20px;
+                                font-size: 12px;
+                                color: #777;
+                            }}
+                        </style>
+                    </head>
+                    <body>
+                        <div class="container">
+                            <h1>New Login Detected</h1>
+                            <p>Hello {user.first_name},</p>
+                            <p>A new login was detected from IP address {request.remote_addr}. If this was not you, please contact support immediately.</p>
+                        </div>
+                    </body>
+                    </html>
+                '''
+            ) 
+            print("Email sent to user for new login.")
+
         return jsonify(access_token=access_token, refresh_token=refresh_token), 200
 
     # Otherwise, Increment failed login attempts for the user
@@ -125,6 +169,17 @@ def login():
     # Check if the user has reached the maximum number of failed attempts
     if failed_login_attempts[email]['attempts'] >= MAX_FAILED_ATTEMPTS: # if exceeded max attempts
         failed_login_attempts[email]['lockout_time'] = datetime.now() + timedelta(seconds=LOCKOUT_PERIOD) # then lockout the user
+
+# I can add a is_attempt field to the model,to..
+    # record a failed login attempt.
+  #  login_record = LoginHistory(
+  #      login_time=datetime.utcnow(),
+  #      ip_address=request.remote_addr,
+  #      user_agent=request.headers.get('User-Agent'),
+  #      user_id=user.id if user else None # this is marked as required in the LoginHistory model.
+  #  )
+  #  db.session.add(login_record)
+  #  db.session.commit()
     
     return jsonify({"invalidCredentials": True}), 401 # if invalid credentials, before being locked out.
 
@@ -147,7 +202,7 @@ def signup():
 
     if User.query.filter_by(email=email).first():
         return jsonify({"userAlreadyExists": True}), 400
-    #
+    
 
     try:
         
@@ -166,8 +221,59 @@ def signup():
         send_email(
             subject='Welcome to Our Service',
             recipient=new_user.email,
-            body=f'Hello {new_user.first_name} {new_user.last_name},\n\nWelcome to our service! We are glad to have you.'
-                 f'Please click on the link below to confirm your email address:\n\n{confirm_email_link} . It expires in 24 hours.'
+            body=f'''
+                <html>
+                <head>
+                    <style>
+                        body {{
+                            font-family: Arial, sans-serif;
+                            color: #333;
+                            background-color: #f4f4f4;
+                            margin: 0;
+                            padding: 0;
+                        }}
+                        .container {{
+                            max-width: 600px;
+                            margin: 0 auto;
+                            padding: 20px;
+                            background-color: #fff;
+                            border-radius: 8px;
+                            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+                        }}
+                        h1 {{
+                            color: #4CAF50;
+                        }}
+                        p {{
+                            line-height: 1.6;
+                        }}
+                        .button {{
+                            display: inline-block;
+                            padding: 10px 20px;
+                            font-size: 16px;
+                            color: #fff;
+                            background-color: #4CAF50;
+                            text-decoration: none;
+                            border-radius: 5px;
+                            margin-top: 20px;
+                        }}
+                        .footer {{
+                            margin-top: 20px;
+                            font-size: 12px;
+                            color: #777;
+                        }}
+                    </style>
+                </head>
+                <body>
+                    <div class="container">
+                        <h1>Welcome to Our Service, {new_user.first_name}!</h1>
+                        <p>We are excited to have you on board. Please confirm your email address by clicking the link below:</p>
+                        <a href="{confirm_email_link}" class="button">Confirm Email</a>
+                        <p>This link will expire in 24 hours.</p>
+                        <p class="footer">If you have any questions, feel free to reach out to our support team.</p>
+                    </div>
+                </body>
+                </html>
+            '''
         )
 
         return jsonify("User created successfully"), 201
@@ -287,7 +393,6 @@ def reset_password():
 
 @auth.route('/user-profile')
 @jwt_required()
-
 def view_user_profile():
 
     current_user_id = get_user_id()
@@ -375,10 +480,6 @@ def update_password():
         return jsonify({"error": str(e)}), 500
 
 
-
-# helper function for veryfing the uuid to then confirm the email.
-
-
 # route to confirm the email, it doesn't require authentication.
 # it will check if the uuid is valid and if it's not expired.
 # and it's via query string.
@@ -408,7 +509,17 @@ def confirm_email():
         return jsonify({"error": str(e)}), 500
     
 
-
+# new route to see login history.
+@auth.route('/login-history')
+@jwt_required()
+def login_history():
+    current_user_id = get_user_id()
+    user = User.query.get(current_user_id)
+    if not user:
+        return jsonify({"error": "User not found"}), 404
+    
+    login_records = LoginHistory.query.filter_by(user_id=current_user_id).all()
+    return jsonify([record.serialize() for record in login_records]), 200
 
 '''
 # This will be replaced for a much better implementation of the same thing.
@@ -523,5 +634,60 @@ def confirm_email():
     return jsonify({"message": "Email confirmed successfully"}), 200
 
 
+from flask import request
+from flask_mail import Mail, Message
+from geopy.geocoders import Nominatim
+import re
+
+mail = Mail()
+
+def calculate_risk_score(user, current_ip, user_agent, current_location):
+    risk_score = 0
+    
+    # Check if IP is new
+    recent_logins = LoginHistory.query.filter_by(user_id=user.id).all()
+    ip_found = any(record.ip_address == current_ip for record in recent_logins)
+    
+    if not ip_found:
+        risk_score += 10
+
+    # Check geographic location
+    geolocator = Nominatim(user_agent="geoapiExercises")
+    location = geolocator.geocode(current_ip)
+    if location and location != current_location:
+        risk_score += 15
+
+    # Check user-agent
+    recent_agents = [record.user_agent for record in recent_logins if record.user_agent]
+    if user_agent not in recent_agents:
+        risk_score += 5
+
+    return risk_score
+
+def login_user(email, password):
+    user = User.query.filter_by(email=email).first()
+    if user and user.check_password(password):
+        current_ip = request.remote_addr
+        user_agent = request.headers.get('User-Agent')
+        current_location = request.remote_addr # This should be more precise in a real scenario
+
+        risk_score = calculate_risk_score(user, current_ip, user_agent, current_location)
+        
+        if risk_score > 20:
+            send_notification_email(user, current_ip, risk_score)
+            return "Suspicious activity detected. Please check your email."
+        else:
+            # Proceed with login
+            return "Login successful"
+    return "Invalid credentials"
+
+def send_notification_email(user, current_ip, risk_score):
+    subject = 'Suspicious Login Alert'
+    body = (f'Hello {user.first_name},\n\n'
+            f'A login was detected with a risk score of {risk_score} from IP address ({current_ip}). '
+            'If this was not you, please contact support immediately.')
+    
+    msg = Message(subject=subject, recipients=[user.email], body=body)
+    mail.send(msg)
 
 '''
