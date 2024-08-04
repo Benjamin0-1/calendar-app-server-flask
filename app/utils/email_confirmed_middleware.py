@@ -8,7 +8,7 @@ def check_email_confirmed():
     print(f"Request endpoint: {request.endpoint}")  
     exempt_routes = [
         'auth.login', 'auth.signup', 'auth.confirm_email',
-        'auth.request_password_reset', 'auth.reset_password'
+        'auth.request_password_reset', 'auth.reset_password',
     ]
 
     if request.endpoint in exempt_routes:

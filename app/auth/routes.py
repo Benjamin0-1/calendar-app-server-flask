@@ -6,7 +6,8 @@ from app.models import User, LoginHistory
 from app import db
 from flask_jwt_extended import (
     create_access_token, create_refresh_token,
-    jwt_required, get_jwt_identity, verify_jwt_in_request
+    jwt_required, get_jwt_identity, verify_jwt_in_request, decode_token, JWTManager, get_jwt,
+    exceptions
 )
 import re
 import random
@@ -19,6 +20,7 @@ from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 from ..utils.get_user_id import get_user_id  # from app/utils.
 from ..services.email_service import send_email # from app/services.
+import app # new line to support /refresh-token
 
 
 # add brute force protection HERE
@@ -44,7 +46,7 @@ failed_login_attempts = {}
 MAX_FAILED_ATTEMPTS = 5
 
 # Define the lockout period in seconds
-LOCKOUT_PERIOD = 60
+LOCKOUT_PERIOD = 300 # 5 minutes
 
 # this is a temporary solution, it will be changed in the future.
 @auth.route('/login', methods=['POST'])
@@ -99,8 +101,10 @@ def login():
         # and the user agent.
         # right now it will only check the ip address.
         has_logged_in_before = LoginHistory.query.filter_by(user_id=user.id, ip_address=request.remote_addr).first()
+        has_logged_in_from_user_agent = LoginHistory.query.filter_by(user_id=user.id, user_agent=request.headers.get('User-Agent')).first() # unsuded for now.
+
+        #if not has_logged_in_from_user_agent or not has_logged_in_before: # <- can also do it this way.
         if not has_logged_in_before:
-            
             send_email(
                 subject='New Login Detected',
                 recipient=user.email,
@@ -282,22 +286,48 @@ def signup():
         return jsonify({"message": "User created but failed to send email."}), 500
 
 
+
+# Manually decoding the refresh token.
 @auth.route('/refresh-token', methods=['POST'])
-@jwt_required(refresh=True)
 def refresh_token():
-    current_user = get_jwt_identity()
-    user = User.query.filter_by(email=current_user).first()
+    data = request.get_json()
+    refresh_token = data.get('refresh_token')
 
-    if not user:
-        return jsonify({"userNotFound": True}), 404
+    if not refresh_token:
+        return jsonify({"error": "Refresh token is missing"}), 400
 
-    additional_claims = {
-        'id': user.id,
-        'first_name': user.first_name,
-        'email': user.email,
-    }
-    access_token = create_access_token(identity=current_user, additional_claims=additional_claims)
-    return jsonify(access_token=access_token)
+    try:
+        # Verify the refresh token
+        verify_jwt_in_request(refresh_token)
+
+        # Decode the refresh token to get user information
+        decoded_token = decode_token(refresh_token)
+        current_user_email = decoded_token.get('sub')  # 'sub' is used for email
+
+        # Retrieve the user from the database
+        user = User.query.filter_by(email=current_user_email).first()
+
+        if not user:
+            return jsonify({"error": "User not found"}), 404
+
+        # Create a new access token
+        additional_claims = {
+            'id': user.id,
+            'first_name': user.first_name,
+            'email': user.email,
+        }
+        access_token = create_access_token(identity=user.email, additional_claims=additional_claims)
+
+        # Return the new access token and its expiration time
+        #expires_in = app.config['JWT_ACCESS_TOKEN_EXPIRES'].total_seconds()
+        return jsonify(access_token=access_token), 200
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+    
+
 
 
 @auth.route('/request-password-reset', methods=['POST'])
@@ -691,3 +721,4 @@ def send_notification_email(user, current_ip, risk_score):
     mail.send(msg)
 
 '''
+

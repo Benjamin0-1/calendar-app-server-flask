@@ -13,3 +13,6 @@ def get_user_id():
     
     # convert to int if possible.
     return int(current_user_id) if current_user_id else None
+
+
+    

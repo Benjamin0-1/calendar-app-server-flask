@@ -1,7 +1,7 @@
 from flask import Flask
 from flask_sqlalchemy import SQLAlchemy
 from flask_mail import Mail
-from flask_cors import CORS
+from flask_cors import CORS, cross_origin
 from flask_jwt_extended import JWTManager
 from flask_migrate import Migrate
 from flask_limiter import Limiter
@@ -34,7 +34,8 @@ def create_app():
 
     db.init_app(app)
     mail.init_app(app)
-    CORS(app)  # Enable CORS for all routes
+    CORS(app, supports_credentials=True, resources={r"/*": {"origins": ["http://localhost:5173"]}})
+
     jwt = JWTManager(app)
     migrate = Migrate(app, db)
 
