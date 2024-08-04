@@ -6,13 +6,14 @@ from app.models import User
 from app import db
 from flask_jwt_extended import (
     create_access_token, create_refresh_token,
-    jwt_required, get_jwt_identity
+    jwt_required, get_jwt_identity, verify_jwt_in_request
 )
 import re
 import random
 import pyotp
 import os
 from datetime import datetime, timedelta
+from functools import wraps
 from . import auth
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
@@ -34,6 +35,34 @@ limiter = Limiter(key_func=get_remote_address)
 @limiter.limit('2 per minute')
 def test_limiter():
     return jsonify({"message": "This is a test."})
+
+
+def check_email_confirmed(f):
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        print(f"Request endpoint: {request.endpoint}")  # Debugging line
+        exempt_routes = [
+            'auth.login', 'auth.signup', 'auth.confirm_email',
+            'auth.request_password_reset', 'auth.reset_password'
+        ]
+
+        if request.endpoint in exempt_routes:
+            print("Exempt route accessed.")  # Debugging line
+            return f(*args, **kwargs)
+
+        verify_jwt_in_request(optional=True)
+        current_user = get_jwt_identity()
+        print(f"Current user: {current_user}")  # Debugging line
+
+        if current_user:
+            user = User.query.filter_by(email=current_user).first()
+            if user and not user.email_confirmed:
+                print("Email not confirmed.")  # Debugging line
+                return jsonify({"error": "Email not confirmed"}), 403
+        
+        return f(*args, **kwargs)
+    
+    return decorated_function
 
 
 
@@ -100,7 +129,7 @@ def login():
     return jsonify({"invalidCredentials": True}), 401 # if invalid credentials, before being locked out.
 
 
-
+# verify the new signup route.
 @auth.route('/signup', methods=['POST'])
 def signup():
     data = request.get_json()
@@ -118,11 +147,14 @@ def signup():
 
     if User.query.filter_by(email=email).first():
         return jsonify({"userAlreadyExists": True}), 400
+    #
 
     try:
         
         new_user = User(first_name=first_name, last_name=last_name, email=email)
         new_user.set_password(password)
+        new_user.generate_email_confirm_uuid() # generate the email confirmation uuid.
+        confirm_email_link = f'http://127.0.0.1:5000/auth/confirm-email?uuid={new_user.email_confirm_uuid}' # verify the link.
         db.session.add(new_user)
         db.session.commit() 
 
@@ -135,6 +167,7 @@ def signup():
             subject='Welcome to Our Service',
             recipient=new_user.email,
             body=f'Hello {new_user.first_name} {new_user.last_name},\n\nWelcome to our service! We are glad to have you.'
+                 f'Please click on the link below to confirm your email address:\n\n{confirm_email_link} . It expires in 24 hours.'
         )
 
         return jsonify("User created successfully"), 201
@@ -254,7 +287,9 @@ def reset_password():
 
 @auth.route('/user-profile')
 @jwt_required()
+
 def view_user_profile():
+
     current_user_id = get_user_id()
     user = User.query.get(current_user_id)
     if not user:
@@ -340,6 +375,45 @@ def update_password():
         return jsonify({"error": str(e)}), 500
 
 
+
+# helper function for veryfing the uuid to then confirm the email.
+
+
+# route to confirm the email, it doesn't require authentication.
+# it will check if the uuid is valid and if it's not expired.
+# and it's via query string.
+# so it's a GET method, this will make it easier for the user to confirm their email, they will only need to click on a link.
+@auth.route('/confirm-email', methods=['GET'])
+def confirm_email():
+    uuid = request.args.get('uuid') # retrieve the uuid from the query string.
+    user = User.query.filter_by(email_confirm_uuid=uuid).first() # find the user the uuid belongs to.
+    # this filters directly by the uuid, meaning we don't need to check for the email existence.
+
+    if not user:
+        return jsonify({"error": "Invalid or expired confirmation link"}), 400
+
+    
+    if user.email_confirm_expiration < datetime.utcnow(): # check if the link has expired.
+        return jsonify({"error": "Confirmation link has expired"}), 400
+
+    try:
+        user.email_confirmed = True
+        user.email_confirm_uuid = None
+        user.email_confirm_expiration = None
+        db.session.commit()
+        return jsonify({"message": "Email confirmed successfully"}), 200
+
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"error": str(e)}), 500
+    
+
+
+
+'''
+# This will be replaced for a much better implementation of the same thing.
+# The user will now only need to click on a link to confirm their email, instead of entering an OTP.
+# and I will have a route which will decode it and then verify the email and its expiration.
 # TEST THIS ROUTE <= AND SEE IF IT'S WELL THOUGHT OUT.
 @auth.route('/confirm-email', methods=['POST'])
 def confirm_email():
@@ -367,28 +441,6 @@ def confirm_email():
         db.session.rollback()
         return jsonify({"error": str(e)}), 500
 
-
-
-#why do we need a scheduler to clean all of this up? 
-'''# Function to expire OTPs
-def expire_otps():
-    with app.app_context():
-        now = datetime.utcnow()
-        expired_users = User.query.filter(
-            (User.email_otp_expiration < now) | (User.recovery_otp_expiration < now)
-        ).all()
-        for user in expired_users:
-            if user.email_otp_expiration and user.email_otp_expiration < now:
-                user.email_otp = None
-                user.email_otp_expiration = None
-            if user.recovery_otp_expiration and user.recovery_otp_expiration < now:
-                user.recovery_otp = None
-                user.recovery_otp_expiration = None
-        db.session.commit()  # commit once to improve efficiency
-
-scheduler = BackgroundScheduler()
-scheduler.add_job(func=expire_otps, trigger='interval', minutes=1)
-scheduler.start()
 '''
 
 
@@ -407,46 +459,6 @@ def check_email_confirmed():
         if user and not user.email_confirmed:
             return jsonify({"error": "Email not confirmed"}), 403
 
-
-def expire_otps():
-    with app.app_context():
-        now = datetime.utcnow()
-        expired_users = User.query.filter(User.otp_expiration < now).all()
-        for user in expired_users:
-            user.otp = None
-            user.otp_expiration = None
-        db.session.commit()  # commit once to improve efficiency
-
-scheduler = BackgroundScheduler()
-scheduler.add_job(func=expire_otps, trigger='interval', minutes=1)
-scheduler.start()
-# also add here the email reminder and whatever else.
-
-# Confirm email route
-@app.route('/confirm-email', methods=['POST'])
-def confirm_email():
-    data = request.get_json()
-    email = data.get('email')
-    otp = data.get('otp')
-    user = User.query.filter_by(email=email).first()
-
-    if not user or user.otp != otp or user.otp_expiration < datetime.utcnow():
-        return jsonify({"error": "Invalid or expired OTP"}), 400
-
-    existing_user = User.query.filter_by(email=email, email_confirmed=True).first()
-    if existing_user:
-        db.session.delete(user)
-        db.session.commit()
-        existing_user.email_confirmed = True
-        existing_user.otp = None
-        existing_user.otp_expiration = None
-        db.session.commit()
-        return jsonify({"success": "Email confirmed successfully and associated with the existing user"}), 200
-
-    user.email_confirmed = True
-    user.otp = None
-    user.otp_expiration = None
-    db.session.commit()
 
     
 
