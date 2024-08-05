@@ -302,7 +302,7 @@ def refresh_token():
 
         # Decode the refresh token to get user information
         decoded_token = decode_token(refresh_token)
-        current_user_email = decoded_token.get('sub')  # 'sub' is used for email
+        current_user_email = decoded_token.get('sub')  # 'sub' is email by default, however I stil added it in the additional_claims as email, so both would work.
 
         # Retrieve the user from the database
         user = User.query.filter_by(email=current_user_email).first()
@@ -319,8 +319,9 @@ def refresh_token():
         access_token = create_access_token(identity=user.email, additional_claims=additional_claims)
 
         # Return the new access token and its expiration time
+        expires_in = os.environ.get('JWT_ACCESS_TOKEN_EXPIRES') # or 60 minutes if not set.
         #expires_in = app.config['JWT_ACCESS_TOKEN_EXPIRES'].total_seconds()
-        return jsonify(access_token=access_token), 200
+        return jsonify(access_token=access_token, expires_in=expires_in), 200
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500

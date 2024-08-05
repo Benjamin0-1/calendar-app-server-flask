@@ -2,13 +2,14 @@ from flask import request, jsonify
 from app.models import BookedDate, User, Property, DeletedDate
 from . import bookings
 from app import db
-from flask_jwt_extended import jwt_required, get_jwt_identity, decode_token
+from flask_jwt_extended import jwt_required, get_jwt_identity
+from flask_jwt_extended.utils import decode_token
 from datetime import datetime, timedelta
 import time
-from .utils import get_user_id # remove this one later and replace it with the one below.
-#from app.utils.get_user_id import get_user_id # <- this ONE.
+from ..utils.get_user_id import get_user_id  # from app/utils.
 
-# things left to here: nothing (up to the first release).
+
+# things left to here: nothing (up to the first release, before parties).
 
 @bookings.route('/', methods=['GET'])
 @jwt_required()  
@@ -314,7 +315,7 @@ def delete_property():
 
 
 # new route in which the user can see all of his properties.
-@bookings.route('/user-properties', methods=['GET'])
+@bookings.route('/user-properties')
 @jwt_required()
 def user_properties():
     current_user_id = get_user_id()
@@ -338,7 +339,7 @@ def user_properties():
 
 #DELETED BOOKNGS:
 
-@bookings.route('/view-deleted-bookings', methods=['GET'])
+@bookings.route('/view-deleted-bookings')
 @jwt_required()
 def view_deleted_bookings():
     current_user_id = get_user_id()
