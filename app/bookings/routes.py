@@ -439,6 +439,19 @@ def delete_deleted_booking():
     except Exception as e:
         db.session.rollback()
         return jsonify({"error": "Failed to delete the booking", "details": str(e)}), 500
+    
+# new route to support detail.
+@bookings.route('/property-details/<int:id>')
+@jwt_required()
+def property_details(id):
+    current_user_id = get_user_id()
+
+    property = Property.query.filter_by(id=id, user_id=current_user_id).first()
+
+    if not property:
+        return jsonify({"error": "Property not found"}), 404
+
+    return jsonify(property.serialize())
 
 
 # dynamic filtering.
