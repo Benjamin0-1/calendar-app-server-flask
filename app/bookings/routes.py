@@ -382,7 +382,28 @@ def delete_all_deleted_bookings():
         return jsonify({"error": "Failed to delete all deleted bookings", "details": str(e)}), 500
 
 
+@bookings.route('/delete-deleted-booking/<int:id>', methods=['DELETE'])
+@jwt_required()
+def delete_deleted_booking_by_id(id):
+    current_user_id = get_user_id()
 
+    if not id:
+        return jsonify({"error": "ID is required"}), 400
+
+    try:
+        deleted_booking = DeletedDate.query.filter_by(id=id, user_id=current_user_id).first()
+
+        if not deleted_booking:
+            return jsonify({"error": "No deleted booking found for the given ID"}), 404
+
+        db.session.delete(deleted_booking)
+        db.session.commit()
+
+        return jsonify({"message": "Deleted booking removed successfully"}), 200
+
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"error": "Failed to delete the booking", "details": str(e)}), 500
 
 
 @bookings.route('/delete-deleted-booking', methods=['DELETE'])
