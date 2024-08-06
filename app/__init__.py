@@ -1,11 +1,9 @@
 from flask import Flask
 from flask_sqlalchemy import SQLAlchemy
 from flask_mail import Mail
-from flask_cors import CORS
+from flask_cors import CORS, cross_origin
 from flask_jwt_extended import JWTManager
 from flask_migrate import Migrate
-from flask_limiter import Limiter
-from flask_limiter.util import get_remote_address
 import os
 from datetime import timedelta
 
@@ -46,16 +44,27 @@ def create_app():
     app.config['JWT_REFRESH_TOKEN_EXPIRES'] = JWT_REFRESH_TOKEN_EXPIRES
     app.config['ENV'] = os.environ.get('ENVIRON', 'development')
 
+
+
+
     db.init_app(app)
     mail.init_app(app)
-    CORS(app, supports_credentials=True, resources={r"/*": {"origins": ["http://localhost:5173"]}})
+
+
+#    CORS(app, supports_credentials=True, resources={r"/*": {
+#    "origins": "http://localhost:5173",
+#    "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+#    "allow_headers": ["Content-Type", "Authorization", 'Access-Control-Allow-Origin'],
+#}})
+
+
+    CORS(app, supports_credentials=True, resources={r"/*": {"origins": "http://localhost:5173"}})
+
 
     jwt = JWTManager(app)
     migrate = Migrate(app, db)
 
-    # Initialize Limiter
-    limiter = Limiter(key_func=get_remote_address)
-    limiter.init_app(app)
+
 
     # Register Blueprints
     from app.main import main as main_blueprint
@@ -71,4 +80,5 @@ def create_app():
 
 app = create_app()
 
-
+# if for some reason cors don't work, use this command on mac, to disable web security on chrome, and test the app: 
+# command: /Applications/Google\ Chrome.app/Contents/MacOS/Google\ Chrome --disable-web-security --user-data-dir="/tmp/chrome_dev"

@@ -7,10 +7,14 @@ from flask_jwt_extended.utils import decode_token
 from datetime import datetime, timedelta
 import time
 from ..utils.get_user_id import get_user_id  # from app/utils.
+import traceback
 
 
 # things left to here: nothing (up to the first release, before parties).
 
+
+
+# THIS IS THE ROUTE THAT CAN'T BE ACCESSED DUE TO CORS.
 @bookings.route('/', methods=['GET'])
 @jwt_required()  
 def view_user_bookings():
@@ -36,7 +40,7 @@ def view_user_bookings():
         bookings_list = []  # going to be an array inside of the response.
         for booking in bookings:
             bookings_list.append({
-                "customer_name": booking.customer_name,
+                "customerName": booking.customer_name,
                 "date": booking.date.strftime("%a, %d %b %Y")  
             })
 
@@ -182,7 +186,7 @@ def update_booking():
 @jwt_required()
 def delete_booking():
     data = request.json
-    property_id = data.get('property_id')
+    property_id = data.get('propertyId')
     date = data.get('date')
 
     # Extract user_id from JWT
@@ -351,7 +355,7 @@ def view_deleted_bookings():
     
     deleted_bookings_list = [booking.serialize() for booking in deleted_bookings]
 
-    return jsonify({"deleted_bookings": deleted_bookings_list})
+    return jsonify({"deletedBookings": deleted_bookings_list})
 
 
 
@@ -364,44 +368,51 @@ def delete_all_deleted_bookings():
         deleted_bookings = DeletedDate.query.filter_by(user_id=current_user_id).all() # get the array
 
         if not deleted_bookings:
-            return jsonify({"message": "No deleted bookings found for the current user"}), 404
+            return jsonify({"error": "No deleted bookings found for the current user"}), 404
 
         # check if in the array.
         for booking in deleted_bookings:
             db.session.delete(booking)
 
         db.session.commit()
-        return jsonify({"message": "All deleted bookings have been removed successfully"}), 200
+        return jsonify({"error": "All deleted bookings have been removed successfully"}), 200
 
     except Exception as e:
         db.session.rollback()
         return jsonify({"error": "Failed to delete all deleted bookings", "details": str(e)}), 500
+
+
+
+
 
 @bookings.route('/delete-deleted-booking', methods=['DELETE'])
 @jwt_required()
 def delete_deleted_booking():
     data = request.get_json()
     date_str = data.get('date')
+    #property_id = data.get('propertyId')
+    property_name = data.get('propertyName') # this model uses property_name instead of property_id.
 
-    if not date_str:
-        return jsonify({"error": "Date is required"}), 400
+    if not date_str or not property_name:
+        return jsonify({"error": "Date and property name is required."}), 400
 
     
     try:
-        date = datetime.strptime(date_str, "%Y_%d_%m").date()
+        date = datetime.strptime(date_str, "%Y-%m-%d").date()  
     except ValueError:
-        return jsonify({"error": "Invalid date format. Use YYYY_DD_MM"}), 400
+        return jsonify({"error": "Invalid date format. Use YYYY-MM-DD"}), 400
 
     current_user_id = get_user_id()
 
     try:
-        deleted_booking = DeletedDate.query.filter_by(date=date, user_id=current_user_id).first()
+        deleted_booking = DeletedDate.query.filter_by(date=date, user_id=current_user_id, property_name=property_name).first()
 
         if not deleted_booking:
             return jsonify({"error": "No deleted booking found for the given date"}), 404
 
         db.session.delete(deleted_booking)
         db.session.commit()
+
         return jsonify({"message": "Deleted booking removed successfully"}), 200
 
     except Exception as e:

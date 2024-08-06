@@ -53,9 +53,9 @@ class User(db.Model):
         properties = [prop.serialize() for prop in self.properties]
         booked_dates = [date.serialize() for date in self.booked_dates]
         return {
-            'first_name': self.first_name,
-            'last_name': self.last_name,
+            'firstName': self.first_name,
+            'lastName': self.last_name,
             'email': self.email,
             'properties': properties,
-            'booked_dates': booked_dates
+            'bookedDates': booked_dates
         }

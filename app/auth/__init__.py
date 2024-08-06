@@ -1,6 +1,7 @@
 from flask import Blueprint
 from app.utils.email_confirmed_middleware import check_email_confirmed
 
+
 auth = Blueprint('auth', __name__)
 
 @auth.before_request

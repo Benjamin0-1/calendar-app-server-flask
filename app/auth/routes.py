@@ -1,6 +1,4 @@
 from flask import request, jsonify, Blueprint
-from app import Limiter
-from flask_limiter.util import get_remote_address
 from werkzeug.security import generate_password_hash, check_password_hash
 from app.models import User, LoginHistory
 from app import db
@@ -16,38 +14,17 @@ import os
 from datetime import datetime, timedelta
 from functools import wraps
 from . import auth
-from flask_limiter import Limiter
-from flask_limiter.util import get_remote_address
 from ..utils.get_user_id import get_user_id  # from app/utils.
 from ..services.email_service import send_email # from app/services.
-import app # new line to support /refresh-token
 
-
-# add brute force protection HERE
-# and re implement email-confirm.
-
-# don't use in-memory storage.
-#limiter = Limiter(key_func=get_remote_address)
-
-# NOT WORKING.
-
-limiter = Limiter(key_func=get_remote_address)
-# Example route to test rate limiter
-@auth.route('/test-limiter', methods=['GET'])
-@limiter.limit('2 per minute')
-def test_limiter():
-    return jsonify({"message": "This is a test."}), 200
 
 
 # Track failed login attempts
 failed_login_attempts = {}
-
 # Define the maximum number of allowed failed attempts
 MAX_FAILED_ATTEMPTS = 5
-
 # Define the lockout period in seconds
 LOCKOUT_PERIOD = 300 # 5 minutes
-
 # this is a temporary solution, it will be changed in the future.
 @auth.route('/login', methods=['POST'])
 def login():
@@ -78,6 +55,8 @@ def login():
             'first_name': user.first_name,
             'email': user.email,
         }
+        refresh_token_expires_in = os.environ.get('JWT_REFRESH_TOKEN_EXPIRES')
+        access_token_expires_in = os.environ.get('JWT_ACCESS_TOKEN_EXPIRES')
         access_token = create_access_token(identity=email, additional_claims=additional_claims)
         refresh_token = create_refresh_token(identity=email, additional_claims=additional_claims)
         
@@ -162,7 +141,7 @@ def login():
             ) 
             print("Email sent to user for new login.")
 
-        return jsonify(access_token=access_token, refresh_token=refresh_token), 200
+        return jsonify(access_token=access_token, refresh_token=refresh_token, refresh_token_expires_in=refresh_token_expires_in, access_token_expires_in=access_token_expires_in), 200
 
     # Otherwise, Increment failed login attempts for the user
     if email in failed_login_attempts:
@@ -192,10 +171,10 @@ def login():
 @auth.route('/signup', methods=['POST'])
 def signup():
     data = request.get_json()
-    first_name = data.get('first_name')
-    last_name = data.get('last_name')
-    email = data.get('email')
-    password = data.get('password')
+    first_name = data.get('firstName') # lastName
+    last_name = data.get('lastName') # firstName
+    email = data.get('email')   # email
+    password = data.get('password') # password
 
     if not all([first_name, last_name, email, password]):
         return jsonify({"missingData": True}), 400
@@ -288,10 +267,10 @@ def signup():
 
 
 # Manually decoding the refresh token.
-@auth.route('/refresh-token', methods=['POST'])
+@auth.route('/access-token', methods=['POST'])
 def refresh_token():
     data = request.get_json()
-    refresh_token = data.get('refresh_token')
+    refresh_token = data.get('refreshToken') # refreshToken instead of refresh_token.
 
     if not refresh_token:
         return jsonify({"error": "Refresh token is missing"}), 400
@@ -384,8 +363,8 @@ def reset_password():
     data = request.get_json()
     email = data.get('email')
     otp_code = data.get('otp')
-    new_password = data.get('new_password')
-    confirm_new_password = data.get('confirm_new_password')
+    new_password = data.get('new_password') # newPassword
+    confirm_new_password = data.get('confirm_new_password') # confirmNewPassword
 
     if not email or not otp_code or not new_password or not confirm_new_password:
         return jsonify({"error": "Missing required data"}), 400
@@ -421,8 +400,7 @@ def reset_password():
     else:
         return jsonify({"error": "Invalid OTP or it has expired"}), 403
 
-
-@auth.route('/user-profile')
+@auth.route('/user-profile', methods=['GET', 'OPTIONS'])
 @jwt_required()
 def view_user_profile():
 
@@ -438,8 +416,8 @@ def view_user_profile():
 @jwt_required()
 def update_profile():
     data = request.get_json()
-    first_name = data.get('first_name')
-    last_name = data.get('last_name')
+    first_name = data.get('firstName') # firstName
+    last_name = data.get('lastName')   # lastName
     
     if not first_name and not last_name:
         return jsonify({"error": "At least one parameter to be updated is required"}), 400
@@ -465,7 +443,7 @@ def update_profile():
             db.session.commit()
             return jsonify({"message": "Profile updated successfully"}), 200
         else:
-            return jsonify({"message": "No changes detected"}), 400
+            return jsonify({"error": "No changes detected"}), 400
     
     except Exception as e:
         db.session.rollback()
@@ -478,9 +456,9 @@ def update_profile():
 @jwt_required()
 def update_password():
     data = request.get_json()
-    current_password = data.get('current_password')
-    new_password = data.get('new_password')
-    confirm_new_password = data.get('confirm_new_password')
+    current_password = data.get('currentPassword')
+    new_password = data.get('newPassword')
+    confirm_new_password = data.get('confirmNewPassword')
 
     # All fields are required.
     if not current_password or not new_password or not confirm_new_password:
@@ -539,6 +517,10 @@ def confirm_email():
         db.session.rollback()
         return jsonify({"error": str(e)}), 500
     
+# new route to request a new email confirmation link, in case the user didn't receive the first one.
+# this would disable the previous link, and generate a new one associated with the user.
+
+    
 
 # new route to see login history.
 @auth.route('/login-history')
@@ -551,6 +533,8 @@ def login_history():
     
     login_records = LoginHistory.query.filter_by(user_id=current_user_id).all()
     return jsonify([record.serialize() for record in login_records]), 200
+
+
 
 '''
 # This will be replaced for a much better implementation of the same thing.

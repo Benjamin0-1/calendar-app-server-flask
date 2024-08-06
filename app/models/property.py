@@ -14,11 +14,12 @@ class Property(db.Model):
     def __repr__(self):
         return f'<Property {self.id}, {self.property_name}>'
 
+    # moved to camel case.
     def serialize(self):
         return {
             "id": self.id,
-            "property_name": self.property_name,
-            "user_id": self.user_id,
-            'booked_dates': [booked_date.serialize() for booked_date in self.booked_dates]
+            "propertyName": self.property_name,
+            "userId": self.user_id,
+            'bookedDates': [booked_date.serialize() for booked_date in self.booked_dates]
         }
 
