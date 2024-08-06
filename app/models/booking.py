@@ -19,13 +19,14 @@ class BookedDate(db.Model):
     def __repr__(self):
         return f'<BookedDate {self.id}>'
 
+    # moved to camel case.
     def serialize(self):
         return {
             'id': self.id,
             'date': self.date.isoformat(),
-            'customer_name': self.customer_name,
-            'property_id': self.property_id,
-            'user_id': self.user_id
+            'customerName': self.customer_name,
+            'propertyId': self.property_id,
+            'userId': self.user_id
         }
 
 # we also need the propertyname, not as a relation but as a copy of it.
@@ -36,12 +37,13 @@ class DeletedDate(db.Model):
     property_name = db.Column(db.String(100), nullable=False)
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)  
 
+    # moved to camel case.
     def serialize(self):
         return {
             'id': self.id,
             "date": self.date.strftime("%a, %d %b %Y"),
-            'customer_name': self.customer_name,
-            'property_name': self.property_name
+            'customerName': self.customer_name,
+            'propertyName': self.property_name
         }
 
     

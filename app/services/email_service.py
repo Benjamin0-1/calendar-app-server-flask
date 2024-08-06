@@ -6,6 +6,5 @@ email_sender = os.environ.get('EMAIL_SENDER') or 'oliver125125@gmail.com'
 
 def send_email(subject, recipient, body):
     msg = Message(subject, sender=email_sender, recipients=[recipient])
-    msg.body = body
+    msg.html = body  # .html for html emails.
     mail.send(msg)
-

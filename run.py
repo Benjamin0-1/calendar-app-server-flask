@@ -8,6 +8,7 @@ from datetime import datetime
 # expire_otp & send_booking_reminders & start_scheduler are coming from utils
 # and must be modularized later, this is just a temporary solution,
 # but will be fixed in the future.
+# this function will no longer works thanks to moving to a click for email confirm.
 def expire_otps():
     with app.app_context():
         try:
