@@ -7,6 +7,8 @@ class BookedDate(db.Model):
     customer_name = db.Column(db.String(100), nullable=False)
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'))
     property_id = db.Column(db.Integer, db.ForeignKey('property.id'))
+    # Will add customer_phone_number as a optional field, and regex validation. <- must contain country code, followed by at least 6 digits, and no more than 15 digits.
+    #customer_phone_number = db.Column(db.String(20), nullable=True, info={'check': 'customer_phone_number ~* \'^\+[0-9]{6,15}$\''}) # Need to make sure it matches the description in the comment above.
    
     __table_args__ = (
         UniqueConstraint('date', 'property_id', name='unique_date_per_property'),

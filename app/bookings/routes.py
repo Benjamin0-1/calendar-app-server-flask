@@ -75,8 +75,8 @@ def book_date():
         jwt_payload = decode_token(jwt_token)
         current_user_id = jwt_payload.get('id')
         current_user_id = int(current_user_id)  
-        property_id = int(data.get('property_id'))  
-        customer_name = data.get('customer_name')  
+        property_id = int(data.get('propertyId'))  
+        customer_name = data.get('customerName')  
         booking_date = datetime.strptime(data.get('date'), '%Y-%m-%d').date()
     except Exception as e:
         return jsonify({"error": "Invalid user or property ID format", "details": str(e)}), 400
@@ -124,19 +124,20 @@ def book_date():
         return jsonify({"error": "Failed to create booking", "details": str(e)}), 500
 
 
-@bookings.route('/', methods=['PUT'])
+@bookings.route('/', methods=['PUT']) # needs to be changed to PATCH instead.
 @jwt_required()
 def update_booking():
     data = request.json
-    property_id = data.get('property_id')
-    current_date = data.get('current_date') # date to be updated, it must exists for the specific property selected.
-    customer_name = data.get('customer_name')
-    new_date = data.get('new_date')
+    property_id = data.get('propertyId')
+    current_date = data.get('currentDate') # date to be updated, it must exists for the specific property selected.
+    customer_name = data.get('customerName')
+    new_date = data.get('newDate')
+    #customer_phone_number = data.get('customerPhoneNumber')
 
     current_user_id = get_user_id()
 
     if not property_id or not current_date:
-        return jsonify({"message": "Missing property id or current date"}), 400
+        return jsonify({"error": "Missing property id or current date"}), 400
 
     # Check that the user owns the property they are trying to update
     property = Property.query.filter_by(id=property_id, user_id=current_user_id).first()
@@ -146,11 +147,11 @@ def update_booking():
     # Check if the booking exists
     booking = BookedDate.query.filter_by(property_id=property_id, date=current_date).first()
     if not booking:
-        return jsonify({"dateNotFound": "Booking to be updated doesn't exist."}), 404
+        return jsonify({"error": "Booking to be updated doesn't exist."}), 404
 
     # Check if at least one parameter to be updated is provided
     if not customer_name and not new_date:
-        return jsonify({"missingData": "Must provide at least one parameter to be updated"}), 400
+        return jsonify({"error": "Must provide at least one parameter to be updated"}), 400
 
     # Validate and format new_date if provided
     if new_date: # if provided.
@@ -233,10 +234,10 @@ def delete_booking():
 @jwt_required()
 def create_property():
     data = request.get_json()
-    property_name = data.get('property_name')
+    property_name = data.get('propertyName')
 
     if not property_name:
-        return jsonify({"error": "Missing property_name in request data"}), 400
+        return jsonify({"error": "Missing propertyName in request data"}), 400
 
     jwt_token = request.headers.get('Authorization').split()[1] 
 
@@ -249,10 +250,10 @@ def create_property():
     if not user:
         return jsonify({"error": "User not found"}), 404
 
-    # fix 
-    property_exists = Property.query.filter_by(property_name=property_name, user_id=current_user_id).first()
+    # case insensitive search for property name.
+    property_exists = Property.query.filter(Property.property_name.ilike(property_name), Property.user_id == current_user_id).first()
     if property_exists:
-        return jsonify({"error": f"Property: {property_name} already exists."}), 409
+        return jsonify({"error": f"Property: {property_name} already exists."}), 400
     
     new_property = Property(property_name=property_name, user_id=current_user_id)
 
@@ -264,8 +265,8 @@ def create_property():
             "success": "Property created successfully",
             "property": {
                 "id": new_property.id,
-                "property_name": new_property.property_name,
-                "user_id": new_property.user_id
+                "propertyName": new_property.property_name,
+                "userId": new_property.user_id
             }
         }), 201
     
@@ -454,16 +455,119 @@ def property_details(id):
     return jsonify(property.serialize())
 
 
-# dynamic filtering.
-@bookings.route('/filter-bookings')
+
+# will add a pagination route, which will improve the performance of the app by reducing the amount of data sent to the client at once.
+# it can be combined with GET /bookings .
+
+# default must be return all of the bookings at once (no pagination).
+@bookings.route('/filter-bookings', methods=['GET'])
 @jwt_required()
 def filter_bookings():
     query = BookedDate.query
-
-   
     current_user_id = get_user_id()
 
-    # this always filter by user_id, ensuring they can't manipulate the query.
+    # Always filter by user_id to ensure they can't manipulate the query.
+    query = query.filter(BookedDate.user_id == current_user_id)
+
+    # Start constructing the query based on the parameters received dynamically.
+    property_name = request.args.get('propertyName')
+    if property_name:
+        owns_property = Property.query.filter_by(property_name=property_name, user_id=current_user_id).first()
+        if not owns_property:
+            return jsonify({"error": "You don't own this property"}), 403
+        query = query.join(Property).filter(Property.property_name.ilike(f'%{property_name}%'))
+
+    date_str = request.args.get('date')
+    if date_str:
+        try:
+            date = datetime.strptime(date_str, '%Y-%m-%d').date()
+            query = query.filter(BookedDate.date == date)
+        except ValueError:
+            return jsonify({'error': 'Invalid date format. Use YYYY-MM-DD.'}), 400
+
+    customer_name = request.args.get('customerName')
+    if customer_name:
+        query = query.filter(BookedDate.customer_name.ilike(f'%{customer_name}%'))
+
+    property_id = request.args.get('propertyId')
+    if property_id:
+        try:
+            property_id = int(property_id)
+            query = query.filter(BookedDate.property_id == property_id)
+        except ValueError:
+            return jsonify({"error": "Invalid property ID format."}), 400
+
+    # Choose desc or asc 
+    sort_order = request.args.get('sort_order')
+    if sort_order == 'desc':
+        query = query.order_by(BookedDate.date.desc())
+    elif sort_order == 'asc':
+        query = query.order_by(BookedDate.date.asc())
+    else:
+        query = query.order_by(BookedDate.date.desc())  # Default to most recent bookings first
+
+    # Handle pagination only if parameters are provided
+    page = request.args.get('page', type=int)
+    per_page = request.args.get('perPage', type=int)
+
+    if page and per_page:
+        total_bookings = query.count()
+        query = query.limit(per_page).offset((page - 1) * per_page)
+        bookings = query.all()
+
+        total_pages = (total_bookings + per_page - 1) // per_page  # Calculate total pages
+        pagination_info = {
+            'page': page,
+            'per_page': per_page,
+            'total_bookings': total_bookings,
+            'total_pages': total_pages,
+            'next_page': page + 1 if page * per_page < total_bookings else None,
+            'prev_page': page - 1 if page > 1 else None
+        }
+    else:
+        bookings = query.all()
+        pagination_info = None
+
+    results = []
+    for booking in bookings:
+        booking_data = booking.serialize()
+        booking_data['propertyName'] = booking.property.property_name  # This will only include the name if applied to the query.
+        results.append(booking_data)
+
+    if len(results) == 0:
+        return jsonify({"error": "No bookings found"}), 404
+
+    response = {
+        'results': results,
+        'pagination': pagination_info
+    }
+
+    # Apply the default query if no filters are provided
+    if not property_name and not date_str and not customer_name and not property_id:
+        default_query = BookedDate.query.filter_by(user_id=current_user_id).all()
+        default_results = []
+        for booking in default_query:
+            booking_data = booking.serialize()
+            booking_data['propertyName'] = booking.property.property_name
+            default_results.append(booking_data)
+        return jsonify(default_results)
+
+    return jsonify(response)
+
+
+
+
+
+
+'''
+@bookings.route('/filter-bookings')
+@jwt_required()
+def filter_bookings():
+    query = BookedDate.query # get all bookings.
+
+    current_user_id = get_user_id()
+
+    # this will always filter by user_id, ensuring they can't manipulate the query.
     query = query.filter(BookedDate.user_id == current_user_id)
 
     property_name = request.args.get('property_name')
@@ -473,7 +577,7 @@ def filter_bookings():
     date_str = request.args.get('date')
     if date_str:
         try:
-            date = datetime.strptime(date_str, '%Y-%m-%d').date()
+            date = datetime.strptime(date_str, '%Y-%m-%d').date() 
             query = query.filter(BookedDate.date == date)
         except ValueError:
             return jsonify({'error': 'Invalid date format. Use YYYY-MM-DD.'}), 400
@@ -497,5 +601,6 @@ def filter_bookings():
         return jsonify({"error": "no bookings found"}), 404
 
     return jsonify(results)
-
-# ne
+# to this route I need to add a 'desc' parameter to sort the results by date in descending order. 
+# it will be a toggle button in the frontend, so the user can see the most recent bookings first and vice versa.
+'''
