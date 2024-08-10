@@ -3,17 +3,20 @@ from sqlalchemy import UniqueConstraint, CheckConstraint
 
 class BookedDate(db.Model):
     id = db.Column(db.Integer, primary_key=True)
-    date = db.Column(db.Date, unique=False, nullable=False) 
+    date = db.Column(db.Date, unique=False, nullable=False)
     customer_name = db.Column(db.String(100), nullable=False)
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'))
     property_id = db.Column(db.Integer, db.ForeignKey('property.id'))
-    # Will add customer_phone_number as a optional field, and regex validation. <- must contain country code, followed by at least 6 digits, and no more than 15 digits.
-    #customer_phone_number = db.Column(db.String(20), nullable=True, info={'check': 'customer_phone_number ~* \'^\+[0-9]{6,15}$\''}) # Need to make sure it matches the description in the comment above.
-   
+    customer_phone_number = db.Column(db.String(20), nullable=True)  
+
     __table_args__ = (
         UniqueConstraint('date', 'property_id', name='unique_date_per_property'),
-        CheckConstraint('date >= CURRENT_DATE', name='check_date_future_or_present')
-    ) 
+        CheckConstraint('date >= CURRENT_DATE', name='check_date_future_or_present'),
+        CheckConstraint(
+        "customer_phone_number ~* '^\\+[0-9]{6,15}$'",
+        name='check_phone_number_format'
+    )
+    )
 
     user = db.relationship('User', back_populates='booked_dates')
     property = db.relationship('Property', back_populates='booked_dates')
@@ -21,7 +24,6 @@ class BookedDate(db.Model):
     def __repr__(self):
         return f'<BookedDate {self.id}>'
 
-    # moved to camel case.
     def serialize(self):
         return {
             'id': self.id,

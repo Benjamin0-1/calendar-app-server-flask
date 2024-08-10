@@ -1,7 +1,7 @@
-from flask import request, jsonify, Blueprint
+from flask import request, jsonify, Blueprint, redirect, url_for
 from werkzeug.security import generate_password_hash, check_password_hash
-from app.models import User, LoginHistory
-from app import db
+from app.models import User, LoginHistory, Provider
+from app import db, oauth
 from flask_jwt_extended import (
     create_access_token, create_refresh_token,
     jwt_required, get_jwt_identity, verify_jwt_in_request, decode_token, JWTManager, get_jwt,
@@ -13,9 +13,113 @@ import pyotp
 import os
 from datetime import datetime, timedelta
 from functools import wraps
-from . import auth
+from . import auth # blueprint
 from ..utils.get_user_id import get_user_id  # from app/utils.
 from ..services.email_service import send_email # from app/services.
+from app import OAuth # check if this is correct.
+import secrets
+from flask import session
+
+@auth.route('/google/login', methods=['POST'])
+def google_login():
+    try:
+        data = request.get_json()
+        redirect_uri = data.get('redirect_uri')
+        
+        if not redirect_uri:
+            return jsonify({"error": "Redirect URI is required"}), 400
+
+        state = secrets.token_urlsafe(32)
+        session['oauth_state'] = state
+        
+        authorization_url = "https://accounts.google.com/o/oauth2/auth"  # Example URL
+        
+        return jsonify({"authorization_url": authorization_url, "state": state}), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+
+@auth.route('/google/callback', methods=['GET'])
+def google_callback():
+   
+
+    state = request.args.get('state')
+    stored_state = session.get('oauth_state')
+    
+    if state != stored_state:
+        return jsonify({"error": "Invalid state parameter"}), 400
+
+
+    code = request.args.get('code')
+    if not code:
+        return jsonify({"error": "Authorization code is required"}), 400
+
+    # Exchange the authorization code for an access token
+    try:
+        token_response = oauth.google.authorize_access_token(code=code)
+    except Exception as e:
+        return jsonify({"error": f"Failed to get access token from Google: {str(e)}"}), 500 # this is the what is returned to the user.
+
+    # Extract user info from the token
+    try:
+        user_info = oauth.google.parse_id_token(token_response)
+    except Exception as e:
+        return jsonify({"error": f"Failed to parse user info from token: {str(e)}"}), 400
+
+    email = user_info.get('email')
+    first_name = user_info.get('given_name')
+    last_name = user_info.get('family_name')
+
+    if not email:
+        return jsonify({"error": "Email is missing from user info"}), 400
+
+    # Check if the user already exists
+    user = User.query.filter_by(email=email).first()
+
+    if user:
+        # User exists; check the provider
+        provider = Provider.query.filter_by(user_id=user.id).first()
+        if provider:
+            if provider.provider_name == 'google':
+                # Generate JWT tokens
+                access_token = create_access_token(identity=email)
+                refresh_token = create_refresh_token(identity=email)
+                refresh_token_expires_in = os.environ.get('JWT_REFRESH_TOKEN_EXPIRES')
+                return jsonify(access_token=access_token, refresh_token=refresh_token, refresh_token_expires_in=refresh_token_expires_in), 200
+            else:
+                return jsonify({"message": "User registered with a different provider"}), 403
+        else:
+            return jsonify({"message": "User is registered locally, cannot log in with Google"}), 403
+
+    # User does not exist; create a new user
+    try:
+        password = str(random.randint(100000, 999999))  # Generate a random password
+        user = User(email=email, first_name=first_name, last_name=last_name)
+        user.set_password(password)
+        db.session.add(user)
+        db.session.commit()
+
+        # Ensure the Google provider is created only once
+        provider = Provider.query.filter_by(provider_name='google', user_id=user.id).first()
+        if not provider:
+            provider = Provider(provider_name='google', user_id=user.id)
+            db.session.add(provider)
+            db.session.commit()
+
+    except Exception as e:
+        return jsonify({"error": f"Failed to create user or provider: {str(e)}"}), 500
+
+    # Generate JWT tokens
+    access_token = create_access_token(identity=email)
+    refresh_token = create_refresh_token(identity=email)
+    refresh_token_expires_in = os.environ.get('JWT_REFRESH_TOKEN_EXPIRES')
+    access_token_expires_in = os.environ.get('JWT_ACCESS_TOKEN_EXPIRES')
+
+    return jsonify(access_token=access_token, refresh_token=refresh_token, refresh_token_expires_in=refresh_token_expires_in, access_token_expires_in=access_token_expires_in), 200
+
+
+
 
 
 

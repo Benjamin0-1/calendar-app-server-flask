@@ -7,6 +7,7 @@ class Property(db.Model):
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'))
     # each property should have default image just to make it look better in the frontend.
     # default_image = db.Column(db.String(100), nullable=True, default='https://i.ytimg.com/vi/gVwV_vnS_rg/maxresdefault.jpg')
+    # booking address, or it could be a table to include the address, the city, the country, etc. <- one to one relationship. each property only has one address.
 
     owner = db.relationship('User', back_populates='properties')
     booked_dates = db.relationship('BookedDate', back_populates='property')

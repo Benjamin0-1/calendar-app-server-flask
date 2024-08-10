@@ -6,10 +6,13 @@ from flask_jwt_extended import JWTManager
 from flask_migrate import Migrate
 import os
 from datetime import timedelta
+from authlib.integrations.flask_client import OAuth
+
 
 
 db = SQLAlchemy()
 mail = Mail()
+
 
 
 access_token_expiracy = os.environ.get('JWT_ACCESS_TOKEN_EXPIRES')
@@ -30,9 +33,11 @@ JWT_REFRESH_TOKEN_EXPIRES = timedelta(days=refresh_token_expiracy)
 # now you can simply change the value of the environment variable JWT_ACCESS_TOKEN_EXPIRES to change the expiration time of the access token.
 # access token number is in minutes and refresh token number is in days.
 
+oauth = OAuth()
+
 def create_app():
     app = Flask(__name__)
-    app.config['SECRET_KEY'] = SECRET_KEY
+    app.config['SECRET_KEY'] = SECRET_KEY 
     app.config['SQLALCHEMY_DATABASE_URI'] = SQLALCHEMY_DATABASE_URI
     app.config['MAIL_SERVER'] = 'smtp.gmail.com'
     app.config['MAIL_PORT'] = 587
@@ -44,29 +49,41 @@ def create_app():
     app.config['JWT_REFRESH_TOKEN_EXPIRES'] = JWT_REFRESH_TOKEN_EXPIRES
     app.config['ENV'] = os.environ.get('ENVIRON', 'development')
 
-
-
-
     db.init_app(app)
     mail.init_app(app)
-
-
 #    CORS(app, supports_credentials=True, resources={r"/*": {
 #    "origins": "http://localhost:5173",
 #    "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
 #    "allow_headers": ["Content-Type", "Authorization", 'Access-Control-Allow-Origin'],
 #}})
 
-
     CORS(app, supports_credentials=True, resources={r"/*": {"origins": "http://localhost:5173"}})
-
 
     jwt = JWTManager(app)
     migrate = Migrate(app, db)
 
+    # Google.
+    app.config['GOOGLE_CLIENT_ID'] = os.environ.get('GOOGLE_CLIENT_ID')
+    app.config['GOOGLE_CLIENT_SECRET'] = os.environ.get('GOOGLE_CLIENT_SECRET')
+    
+    oauth.init_app(app) # a function, so it doesn't get executed until the app is created, avoiding circular imports.
+    google = oauth.register(
+        name='google',
+        client_id=app.config['GOOGLE_CLIENT_ID'],
+        client_secret=app.config['GOOGLE_CLIENT_SECRET'],
+        authorize_url='https://accounts.google.com/o/oauth2/auth',
+        authorize_params=None,
+        access_token_url='https://accounts.google.com/o/oauth2/token',
+        access_token_params=None,
+        refresh_token_url=None,
+        client_kwargs={'scope': 'openid profile email'},
+        userinfo_endpoint='https://openidconnect.googleapis.com/v1/userinfo',
+        userinfo_compliance_fix=None,
+        client_class=None,
+    )
 
 
-    # Register Blueprints
+
     from app.main import main as main_blueprint
     app.register_blueprint(main_blueprint, url_prefix='/main')
 

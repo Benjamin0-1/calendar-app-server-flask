@@ -49,7 +49,7 @@ def send_booking_reminders():
 
 def start_scheduler(app):
     scheduler = BackgroundScheduler()
-    scheduler.add_job(func=expire_otps, trigger='interval', minutes=1)
+    #scheduler.add_job(func=expire_otps, trigger='interval', minutes=1)
     scheduler.add_job(func=send_booking_reminders, trigger='interval', hours=1) # this is working.
     scheduler.start()
     return scheduler
@@ -58,6 +58,8 @@ app = create_app()
 
 # Start the scheduler
 scheduler = start_scheduler(app)
+
+# create_provider() 
 
 if __name__ == '__main__':
     app.run(debug=True)
