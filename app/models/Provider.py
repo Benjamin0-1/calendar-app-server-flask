@@ -1,27 +1,21 @@
 from .. import db
-from sqlalchemy import UniqueConstraint, CheckConstraint
-
-# this is the provider model, the idea here is that we can identify a user's third party provider, like google, facebook, etc.
-# here we will check things such as :
-# - the provider name (google, facebook, etc).
-# the user_id is the foreign key, so we can identify the user that is using the provider.
-# the user (if third party user, which we can check if they have a record here) can only belong to one provider (per email).
-# this is a one to one relationship.
-# Very important: If a user registered locally, they cannot have a provider record, and vice versa.
+from sqlalchemy import UniqueConstraint
 
 class Provider(db.Model):
     id = db.Column(db.Integer, primary_key=True)
-    provider_name = db.Column(db.String(100), nullable=False)  # Google, Facebook, etc.
-    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False, unique=True)
+    provider_uuid = db.Column(db.String(36), nullable=False)  # Unique identifier for the provider
+    provider_name = db.Column(db.String(100), nullable=False)  # e.g., Google, Facebook
 
-    # Relationships
-    user = db.relationship('User', back_populates='provider')
+    # Relationship with the User model
+    users = db.relationship('User', back_populates='provider', cascade="all, delete-orphan")
+
+    # Uniqueness constraint to ensure no duplicate provider records for the same UUID and provider name
+    __table_args__ = (
+        UniqueConstraint('provider_name', 'provider_uuid', name='unique_provider'),
+    )
 
     def serialize(self):
         return {
             'providerName': self.provider_name,
-            'userId': self.user_id,
-            'userEmail': self.user.email,  # This assumes a relationship with the User model
+            'providerUuid': self.provider_uuid,
         }
-
-

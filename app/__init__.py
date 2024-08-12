@@ -1,23 +1,21 @@
 from flask import Flask
 from flask_sqlalchemy import SQLAlchemy
 from flask_mail import Mail
-from flask_cors import CORS, cross_origin
+from flask_cors import CORS
 from flask_jwt_extended import JWTManager
 from flask_migrate import Migrate
 import os
 from datetime import timedelta
 from authlib.integrations.flask_client import OAuth
-
-
+import firebase_admin
+from firebase_admin import credentials
 
 db = SQLAlchemy()
 mail = Mail()
+oauth = OAuth()
 
-
-
-access_token_expiracy = os.environ.get('JWT_ACCESS_TOKEN_EXPIRES')
-refresh_token_expiracy = os.environ.get('JWT_REFRESH_TOKEN_EXPIRES')
-
+access_token_expiracy = os.environ.get('JWT_ACCESS_TOKEN_EXPIRES') # in minutes
+refresh_token_expiracy = os.environ.get('JWT_REFRESH_TOKEN_EXPIRES') # in days
 
 access_token_expiracy = int(access_token_expiracy) if access_token_expiracy else 60  
 refresh_token_expiracy = int(refresh_token_expiracy) if refresh_token_expiracy else 15  
@@ -26,14 +24,8 @@ SECRET_KEY = os.environ.get('SECRET_KEY', 'secret-key')
 SQLALCHEMY_DATABASE_URI = os.environ.get('DATABASE_URL', 'postgresql://postgres:12241530@localhost/calendar-app')
 JWT_SECRET_KEY = os.environ.get('JWT_SECRET_KEY', 'your_jwt_secret_key')
 
-
 JWT_ACCESS_TOKEN_EXPIRES = timedelta(minutes=access_token_expiracy)
 JWT_REFRESH_TOKEN_EXPIRES = timedelta(days=refresh_token_expiracy)
-
-# now you can simply change the value of the environment variable JWT_ACCESS_TOKEN_EXPIRES to change the expiration time of the access token.
-# access token number is in minutes and refresh token number is in days.
-
-oauth = OAuth()
 
 def create_app():
     app = Flask(__name__)
@@ -49,24 +41,30 @@ def create_app():
     app.config['JWT_REFRESH_TOKEN_EXPIRES'] = JWT_REFRESH_TOKEN_EXPIRES
     app.config['ENV'] = os.environ.get('ENVIRON', 'development')
 
+    # Initialize Firebase
+    firebase_config_path = os.path.join(os.path.dirname(__file__), 'FirebaseConfig', 'firebase_config.json')
+    print(f"Attempting to load Firebase config from: {firebase_config_path}")
+
+    if not os.path.exists(firebase_config_path):
+        raise FileNotFoundError(f"Firebase config file not found at {firebase_config_path}")
+
+    # Check if Firebase app is already initialized
+    if not len(firebase_admin._apps):
+        cred = credentials.Certificate(firebase_config_path)
+        firebase_admin.initialize_app(cred)
+
     db.init_app(app)
     mail.init_app(app)
-#    CORS(app, supports_credentials=True, resources={r"/*": {
-#    "origins": "http://localhost:5173",
-#    "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-#    "allow_headers": ["Content-Type", "Authorization", 'Access-Control-Allow-Origin'],
-#}})
-
     CORS(app, supports_credentials=True, resources={r"/*": {"origins": "http://localhost:5173"}})
 
     jwt = JWTManager(app)
     migrate = Migrate(app, db)
 
-    # Google.
+    # Google OAuth
     app.config['GOOGLE_CLIENT_ID'] = os.environ.get('GOOGLE_CLIENT_ID')
     app.config['GOOGLE_CLIENT_SECRET'] = os.environ.get('GOOGLE_CLIENT_SECRET')
     
-    oauth.init_app(app) # a function, so it doesn't get executed until the app is created, avoiding circular imports.
+    oauth.init_app(app)
     google = oauth.register(
         name='google',
         client_id=app.config['GOOGLE_CLIENT_ID'],
@@ -80,9 +78,9 @@ def create_app():
         userinfo_endpoint='https://openidconnect.googleapis.com/v1/userinfo',
         userinfo_compliance_fix=None,
         client_class=None,
+        callback_url='http://127.0.0.1:5000/auth/google/callback', 
+        response_type='code'
     )
-
-
 
     from app.main import main as main_blueprint
     app.register_blueprint(main_blueprint, url_prefix='/main')

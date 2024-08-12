@@ -16,9 +16,85 @@ from functools import wraps
 from . import auth # blueprint
 from ..utils.get_user_id import get_user_id  # from app/utils.
 from ..services.email_service import send_email # from app/services.
-from app import OAuth # check if this is correct.
+from app import oauth # check if this is correct. instead of OAuth.
 import secrets
 from flask import session
+from firebase_admin import auth as firebase_auth
+
+
+def verify_firebase_token(firebase_token):
+    try:
+        decoded_token = firebase_auth.verify_id_token(firebase_token)
+        return decoded_token
+    except Exception as e:
+        print(f"Error verifying Firebase token: {e}")
+        return None
+
+def handle_third_party_auth(provider_name, provider_uuid, firebase_token):
+    decoded_token = verify_firebase_token(firebase_token)
+    
+    if not decoded_token:
+        return jsonify({"error": "Invalid Firebase token"}), 400
+    
+    user_email = decoded_token.get('email')
+    provider_user_id = decoded_token.get('uid')
+
+    # Find the provider in the database
+    provider = Provider.query.filter_by(provider_name=provider_name, provider_uuid=provider_uuid).first()
+    if not provider:
+        return jsonify({"error": "Provider not found"}), 404
+    
+    # Find the user based on the email (this assumes email is used to look up users)
+    user = User.query.filter_by(email=user_email).first()
+    
+    if user:
+        # Existing user
+        if user.provider_id != provider.id:
+            return jsonify({"error": "User registered with a different provider"}), 403
+        
+        if not user.provider:
+            return jsonify({"error": "User registered locally, cannot log in with a third-party provider"}), 403
+        
+        # Generate tokens for the existing user
+        access_token = create_access_token(identity={"email": user.email, "id": user.id})
+        refresh_token = create_refresh_token(identity={"email": user.email, "id": user.id})
+        refresh_token_expires_in = os.environ.get('JWT_REFRESH_TOKEN_EXPIRES')
+        access_token_expires_in = os.environ.get('JWT_ACCESS_TOKEN_EXPIRES')
+        
+        return jsonify(
+            access_token=access_token, 
+            refresh_token=refresh_token, 
+            refresh_token_expires_in=refresh_token_expires_in, 
+            access_token_expires_in=access_token_expires_in
+        ), 200
+    
+    # If user does not exist, create a new user
+    new_user = User(
+        first_name=decoded_token.get('name', ''),
+        last_name='',
+        email=user_email,
+        provider_id=provider.id
+    )
+    new_user.set_password(str(random.randint(100000, 999999)))  # Set a random password
+    db.session.add(new_user)
+    db.session.commit()
+
+    # Generate tokens for the new user
+    access_token = create_access_token(identity={"email": new_user.email, "id": new_user.id})
+    refresh_token = create_refresh_token(identity={"email": new_user.email, "id": new_user.id})
+    refresh_token_expires_in = os.environ.get('JWT_REFRESH_TOKEN_EXPIRES')
+    access_token_expires_in = os.environ.get('JWT_ACCESS_TOKEN_EXPIRES')
+    
+    return jsonify(
+        access_token=access_token, 
+        refresh_token=refresh_token, 
+        refresh_token_expires_in=refresh_token_expires_in, 
+        access_token_expires_in=access_token_expires_in
+    ), 200
+
+    
+    
+'''
 
 @auth.route('/google/login', methods=['POST'])
 def google_login():
@@ -116,10 +192,89 @@ def google_callback():
     refresh_token_expires_in = os.environ.get('JWT_REFRESH_TOKEN_EXPIRES')
     access_token_expires_in = os.environ.get('JWT_ACCESS_TOKEN_EXPIRES')
 
-    return jsonify(access_token=access_token, refresh_token=refresh_token, refresh_token_expires_in=refresh_token_expires_in, access_token_expires_in=access_token_expires_in), 200
+    redirect_url = f"{os.environ.get('FRONTEND_URL')}/auth/callback?access_token={access_token}&refresh_token={refresh_token}&access_token_expires_in={access_token_expires_in}&refresh_token_expires_in={refresh_token_expires_in}"
+    return redirect(redirect_url)
+
+
+    #return jsonify(access_token=access_token, refresh_token=refresh_token, refresh_token_expires_in=refresh_token_expires_in, access_token_expires_in=access_token_expires_in), 200
+# right here, i would redirect users to a page and in the url i would inlcude the access token and the refresh token along with their expirations of each one.
+
+'''
+
+
+# new route for Google OAuth login only.
+@auth.route('/google-login', methods=['POST'])
+def handle_google_login():
+    data = request.get_json()
+    google_token = data.get('googleToken')
+    email = data.get('email')
+    user_id = data.get('userId')
+
+    if not google_token or not email or not user_id:
+        return jsonify({"error": "Google token, email, and user ID are required"}), 400
+
+    try:
+        # Verify the Google token
+        decoded_token = firebase_auth.verify_id_token(google_token)
+
+        # Ensure that the email and user ID match
+        if email != decoded_token.get('email') or user_id != decoded_token.get('uid'):
+            return jsonify({"error": "Token and provided data do not match"}), 400
+
+        # Check if the user exists
+        user = User.query.filter_by(email=email).first()
+
+        if not user:
+            # Create a new user if they don't exist
+            new_user = User(
+                first_name=decoded_token.get('given_name', ''),
+                last_name=decoded_token.get('family_name', ''),
+                email=email,
+                provider_id=create_or_get_provider('google', user_id)
+            )
+            new_user.set_password(str(random.randint(100000, 999999)))  # Assign a default password
+            db.session.add(new_user)
+            db.session.commit()
+            user = new_user
+
+        # Generate JWT tokens
+        access_token, refresh_token = create_tokens(user)
+
+        return jsonify({
+            'access_token': access_token,
+            'refresh_token': refresh_token,
+            'access_token_expires_in': int(os.environ.get('JWT_ACCESS_TOKEN_EXPIRES', 15)),
+            'refresh_token_expires_in': int(os.environ.get('JWT_REFRESH_TOKEN_EXPIRES', 30))
+        }), 200
+
+    except Exception as e:
+        print(f"Error during Google login: {e}")
+        return jsonify({'error': str(e)}), 500
 
 
 
+def create_tokens(user):
+    additional_claims = {
+        'id': user.id,
+        'first_name': user.first_name,
+        'email': user.email,
+    }
+
+    access_token_expires_in = os.environ.get('JWT_ACCESS_TOKEN_EXPIRES', 15)  # Example: 15 minutes
+    refresh_token_expires_in = os.environ.get('JWT_REFRESH_TOKEN_EXPIRES', 30)  # Example: 30 days
+
+    access_token = create_access_token(
+        identity=user.email, 
+        additional_claims=additional_claims, 
+        expires_delta=timedelta(minutes=int(access_token_expires_in))
+    )
+    refresh_token = create_refresh_token(
+        identity=user.email, 
+        additional_claims=additional_claims, 
+        expires_delta=timedelta(days=int(refresh_token_expires_in))
+    )
+
+    return access_token, refresh_token
 
 
 
@@ -135,6 +290,11 @@ def login():
     data = request.get_json()
     email = data.get('email')
     password = data.get('password')
+    firebase_token = data.get('firebaseToken') 
+    provider_name = data.get('providerName')
+
+    if provider_name and firebase_token:
+        return handle_third_party_auth(provider_name, firebase_token) # 
 
     if not all([email, password]):
         return jsonify({"missingData": True}), 400

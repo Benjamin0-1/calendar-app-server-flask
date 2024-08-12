@@ -1,9 +1,21 @@
 from app import create_app, db
 from apscheduler.schedulers.background import BackgroundScheduler
 from flask import current_app as app
-from app.models import User, BookedDate, Property
+from app.models import User, BookedDate, Property, Provider
 from app.services import send_email
 from datetime import datetime
+
+def create_default_provider(): # google for now
+    with app.app_context():
+        try:
+            provider = Provider.query.filter(Provider.provider_name.ilike('google')).first()
+            if not provider:
+                provider = Provider(provider_name='Google', provider_uuid='google')
+                db.session.add(provider)
+                db.session.commit()
+                app.logger.info("Default provider created: google.")
+        except Exception as e:
+            app.logger.error(f"Error in create_default_provider: {e}")
 
 # expire_otp & send_booking_reminders & start_scheduler are coming from utils
 # and must be modularized later, this is just a temporary solution,
@@ -52,6 +64,7 @@ def start_scheduler(app):
     #scheduler.add_job(func=expire_otps, trigger='interval', minutes=1)
     scheduler.add_job(func=send_booking_reminders, trigger='interval', hours=1) # this is working.
     scheduler.start()
+    create_default_provider() 
     return scheduler
 
 app = create_app()
