@@ -8,7 +8,7 @@ def check_email_confirmed():
     print(f"Request endpoint: {request.endpoint}")  
     exempt_routes = [
         'auth.login', 'auth.signup', 'auth.confirm_email',
-        'auth.request_password_reset', 'auth.reset_password', 'auth.view_user_profile'
+        'auth.request_password_reset', 'auth.reset_password'
     ]
 
     if request.endpoint in exempt_routes:
@@ -20,10 +20,14 @@ def check_email_confirmed():
     print(f"Current user: {current_user}") 
 
     if current_user:
+        # right here we need to check if it's a third party user, if it is, then don't check for email confirmation.
         user = User.query.filter_by(email=current_user).first()
+        if user.provider:
+            print("Third-party user.")  
+            return None
         if user and not user.email_confirmed:
             print("Email not confirmed.")  
-            return jsonify({"error": "Email not confirmed"}), 403
+            return jsonify({"emailNotConfirmed": "Email not confirmed"}), 403
 
     return None  # let it continue with the request
 

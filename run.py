@@ -68,12 +68,9 @@ def start_scheduler(app):
     return scheduler
 
 app = create_app()
-
 # Start the scheduler
 scheduler = start_scheduler(app)
-
-# create_provider() 
-
+# create_provider() # will not be used since i dont a token to docode and see the provider uuid.
 if __name__ == '__main__':
     app.run(debug=True)
 

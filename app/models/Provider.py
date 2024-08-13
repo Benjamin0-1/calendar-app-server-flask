@@ -19,3 +19,4 @@ class Provider(db.Model):
             'providerName': self.provider_name,
             'providerUuid': self.provider_uuid,
         }
+

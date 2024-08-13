@@ -20,6 +20,7 @@ from app import oauth # check if this is correct. instead of OAuth.
 import secrets
 from flask import session
 from firebase_admin import auth as firebase_auth
+# here I will use a middleware to replace "if user.provider" check. 
 
 
 def verify_firebase_token(firebase_token):
@@ -224,32 +225,64 @@ def handle_google_login():
         # Check if the user exists
         user = User.query.filter_by(email=email).first()
 
-        if not user:
-            # Create a new user if they don't exist
-            new_user = User(
-                first_name=decoded_token.get('given_name', ''),
-                last_name=decoded_token.get('family_name', ''),
-                email=email,
-                provider_id=create_or_get_provider('google', user_id)
-            )
-            new_user.set_password(str(random.randint(100000, 999999)))  # Assign a default password
-            db.session.add(new_user)
-            db.session.commit()
-            user = new_user
+        if user:
+            # User exists; check if they are using Google as their provider
+            if user.provider and user.provider.provider_name == 'google':
+                # Generate JWT tokens for the existing Google user
+                access_token, refresh_token = create_tokens(user)
+                return jsonify({
+                    'access_token': access_token,
+                    'refresh_token': refresh_token,
+                    'access_token_expires_in': int(os.environ.get('JWT_ACCESS_TOKEN_EXPIRES', 60)),
+                    'refresh_token_expires_in': int(os.environ.get('JWT_REFRESH_TOKEN_EXPIRES', 15))
+                }), 200
+            
+            # User exists but is not using Google; deny access
+            return jsonify({"error": "User registered with a different provider, cannot log in with Google"}), 403
 
-        # Generate JWT tokens
+        # User does not exist; create a new user
+        provider_id = create_or_get_provider('google', user_id)
+        new_user = User(
+            first_name=decoded_token.get('given_name', ''),
+            last_name=decoded_token.get('family_name', ''),
+            email=email,
+            provider_id=provider_id
+        )
+        new_user.set_password(str(random.randint(100000, 999999)))  # Assign a default password
+        db.session.add(new_user)
+        db.session.commit()
+        user = new_user
+
+        # only send this to the user if the user is new.
+        send_email(
+            subject='Welcome to Our Service',
+            recipient=new_user.email,
+            body=f''' hello there {new_user.first_name}, welcome to our service.''')
+
+        # Generate JWT tokens for the new user
         access_token, refresh_token = create_tokens(user)
 
         return jsonify({
             'access_token': access_token,
             'refresh_token': refresh_token,
-            'access_token_expires_in': int(os.environ.get('JWT_ACCESS_TOKEN_EXPIRES', 15)),
-            'refresh_token_expires_in': int(os.environ.get('JWT_REFRESH_TOKEN_EXPIRES', 30))
+            'access_token_expires_in': int(os.environ.get('JWT_ACCESS_TOKEN_EXPIRES', 60)),
+            'refresh_token_expires_in': int(os.environ.get('JWT_REFRESH_TOKEN_EXPIRES', 15))
         }), 200
 
     except Exception as e:
         print(f"Error during Google login: {e}")
         return jsonify({'error': str(e)}), 500
+
+
+    
+def create_or_get_provider(provider_name, provider_uuid):
+    provider = Provider.query.filter_by(provider_name=provider_name, provider_uuid=provider_uuid).first()
+    if not provider:
+        provider = Provider(provider_name=provider_name, provider_uuid=provider_uuid)
+        db.session.add(provider)
+        db.session.commit()
+    return provider.id
+
 
 
 
@@ -290,11 +323,7 @@ def login():
     data = request.get_json()
     email = data.get('email')
     password = data.get('password')
-    firebase_token = data.get('firebaseToken') 
-    provider_name = data.get('providerName')
 
-    if provider_name and firebase_token:
-        return handle_third_party_auth(provider_name, firebase_token) # 
 
     if not all([email, password]):
         return jsonify({"missingData": True}), 400
@@ -303,6 +332,9 @@ def login():
     
     if not user:
         return jsonify({"userNotFound": True}), 404
+    # this won't allwo third party users to login locally.
+    if user.provider:
+        return jsonify({"error": "user registered with a third party provider"}), 403
     
     # Check if the user is locked out due to too many failed attempts
     if email in failed_login_attempts:
@@ -587,6 +619,9 @@ def request_password_reset():
     if not user:
         return jsonify({"error": "User not found"}), 404
     
+    if user.provider:
+        return jsonify({"error": "User registered with a third-party provider"}), 403
+    
     try:
         # Generate a unique OTP secret for the user
         otp_secret_base32 = pyotp.random_base32() 
@@ -640,6 +675,8 @@ def reset_password():
 
     if not user:
         return jsonify({"error": "No user with such email was found"}), 404
+    if user.provider:
+        return jsonify({"error": "User registered with a third-party provider"}), 403
 
     if not user.otp_secret:
         return jsonify({"error": "User OTP secret is missing"}), 500
@@ -731,6 +768,9 @@ def update_password():
     current_user_id = get_user_id()
     user = User.query.get_or_404(current_user_id) 
 
+    if user.provider:
+        return jsonify({"error": "User registered with a third-party provider"}), 403
+
     # Check if the current password is correct.
     if not user.check_password(current_password):
         return jsonify({"error": "Current password is incorrect"}), 403
@@ -765,6 +805,9 @@ def confirm_email():
 
     if not user:
         return jsonify({"error": "Invalid or expired confirmation link"}), 400
+    
+    if user.provider:
+        return jsonify({"error": "User registered with a third-party provider"}), 403
 
     
     if user.email_confirm_expiration < datetime.utcnow(): # check if the link has expired.
@@ -775,14 +818,46 @@ def confirm_email():
         user.email_confirm_uuid = None
         user.email_confirm_expiration = None
         db.session.commit()
+        # if successful then this will redirect to the front end /email-confirmed route.
         return jsonify({"message": "Email confirmed successfully"}), 200
 
     except Exception as e:
         db.session.rollback()
         return jsonify({"error": str(e)}), 500
     
-# new route to request a new email confirmation link, in case the user didn't receive the first one.
-# this would disable the previous link, and generate a new one associated with the user.
+
+@auth.route('/resend-email-confirmation', methods=['POST'])
+def resend_email_confirmation():
+    data = request.get_json()
+    email = data.get('email')
+
+    if not email:
+        return jsonify({"error": "Email is required to resend confirmation link"}), 400
+    
+    user = User.query.filter_by(email=email).first()
+
+    if not user:
+        return jsonify({"error": "User not found"}), 404
+    
+    if user and user.email_confirmed:
+        return jsonify({"error": "Email already confirmed"}), 400
+    
+    if user.provider:
+        return jsonify({"error": "User registered with a third-party provider"}), 403
+    
+    if not user.email_confirmed:
+        new_uuid = user.generate_email_confirm_uuid()
+        confirm_email_link = f'http://127.0.0.1:5000/auth/confirm-email?uuid={new_uuid}'
+        send_email(
+            subject='Confirm your email',
+            recipient=user.email,
+            body=f'Hello {user.first_name},\n\nPlease confirm your email using this link: {confirm_email_link}'
+        )
+        db.session.commit()
+        return jsonify({"message": "Confirmation link sent successfully"}), 200
+    
+    
+
 
     
 

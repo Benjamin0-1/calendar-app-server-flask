@@ -124,7 +124,7 @@ def book_date():
         return jsonify({"error": "Failed to create booking", "details": str(e)}), 500
 
 
-@bookings.route('/', methods=['PUT']) # needs to be changed to PATCH instead.
+@bookings.route('/', methods=['PATCH']) # needs to be changed to PATCH instead.
 @jwt_required()
 def update_booking():
     data = request.json
@@ -136,8 +136,11 @@ def update_booking():
 
     current_user_id = get_user_id()
 
-    if not property_id or not current_date:
-        return jsonify({"error": "Missing property id or current date"}), 400
+    if not property_id:
+        return jsonify({"error": "Missing property id"}), 400
+    
+    if not current_date:
+        return jsonify({"error": "Current date is required"}), 400
 
     # Check that the user owns the property they are trying to update
     property = Property.query.filter_by(id=property_id, user_id=current_user_id).first()
