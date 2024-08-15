@@ -623,26 +623,90 @@ def request_password_reset():
         return jsonify({"error": "User registered with a third-party provider"}), 403
     
     try:
-        # Generate a unique OTP secret for the user
-        otp_secret_base32 = pyotp.random_base32() 
-        user.otp_secret = otp_secret_base32
+        # Generate OTP code
+        otp_code = str(random.randint(100000, 999999))  # Simple random 6-digit OTP
         
-        print(f"OTP SECRET: {otp_secret_base32}")  # Debug: Print the secret to verify it's correct
+        print(f"Generated OTP Code: {otp_code}")
         
-        otp = pyotp.TOTP(otp_secret_base32)
-        otp_code = otp.now()
-        
-        print(f"Generated OTP Code: {otp_code}")  # Debug: Print the generated OTP
-        
-        # Assign OTP and expiration to the user
         user.otp = otp_code
         user.otp_expiration = datetime.utcnow() + timedelta(minutes=10)
         db.session.commit()
 
+        reset_password_front_end_link = f'http://{os.environ.get("FRONTEND_URL")}/reset-password'
+
+        # Email body with CSS styling
+        
+
         send_email(
             subject='Your OTP for Password Reset',
             recipient=email,
-            body=f'Your OTP is {otp_code}. It expires in 10 minutes. Use this OTP to reset your password.'
+            body=f"""
+        <html>
+        <head>
+            <style>
+                body {{
+                    font-family: Arial, sans-serif;
+                    background-color: #f4f4f4;
+                    margin: 0;
+                    padding: 0;
+                }}
+                .container {{
+                    width: 100%;
+                    max-width: 600px;
+                    margin: 20px auto;
+                    background-color: #ffffff;
+                    border-radius: 8px;
+                    padding: 20px;
+                    box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+                }}
+                h1 {{
+                    color: #333333;
+                    text-align: center;
+                }}
+                p {{
+                    font-size: 16px;
+                    color: #666666;
+                }}
+                .otp {{
+                    font-size: 24px;
+                    font-weight: bold;
+                    color: #333333;
+                    text-align: center;
+                    margin: 20px 0;
+                }}
+                .link {{
+                    display: block;
+                    width: fit-content;
+                    margin: 20px auto;
+                    padding: 10px 20px;
+                    background-color: #007bff;
+                    color: #ffffff;
+                    text-decoration: none;
+                    border-radius: 4px;
+                    text-align: center;
+                }}
+                .footer {{
+                    font-size: 14px;
+                    color: #999999;
+                    text-align: center;
+                    margin-top: 20px;
+                }}
+            </style>
+        </head>
+        <body>
+            <div class="container">
+                <h1>Password Reset Request</h1>
+                <p>Your OTP code is:</p>
+                <p class="otp">{otp_code}</p>
+                <p>This OTP expires in 10 minutes.</p>
+                <a href="{reset_password_front_end_link}" class="link">Reset Your Password</a>
+                <div class="footer">
+                    If you did not request this password reset, please ignore this email.
+                </div>
+            </div>
+        </body>
+        </html>
+        """
         )
 
         return jsonify({"message": "OTP sent successfully. Please check your email."}), 200
@@ -662,8 +726,8 @@ def reset_password():
     data = request.get_json()
     email = data.get('email')
     otp_code = data.get('otp')
-    new_password = data.get('new_password') # newPassword
-    confirm_new_password = data.get('confirm_new_password') # confirmNewPassword
+    new_password = data.get('newPassword')  # Changed from newPassword
+    confirm_new_password = data.get('confirmNewPassword')  # Changed from confirmNewPassword
 
     if not email or not otp_code or not new_password or not confirm_new_password:
         return jsonify({"error": "Missing required data"}), 400
@@ -678,19 +742,19 @@ def reset_password():
     if user.provider:
         return jsonify({"error": "User registered with a third-party provider"}), 403
 
-    if not user.otp_secret:
-        return jsonify({"error": "User OTP secret is missing"}), 500
+    if not user.otp:
+        return jsonify({"error": "User OTP is missing"}), 500
 
-    otp = pyotp.TOTP(user.otp_secret)
+    # Assuming OTP validation doesn't require otp_secret
     if otp_code == user.otp and datetime.utcnow() < user.otp_expiration:
         try:
             # Update the user password
             user.set_password(new_password)  # Call the set_password method
             print(f"NEW USER PASSWORD HASH: {user.password_hash}")
-            # and then CLEAN UP.
-            user.otp = None  
-            user.otp_expiration = None  
-            user.otp_secret = None  # Optionally clear the OTP secret if it's no longer needed
+            
+            # Clean up OTP data
+            user.otp = None
+            user.otp_expiration = None
             db.session.commit()
 
             return jsonify({"message": "Password reset successfully"}), 200
@@ -700,6 +764,8 @@ def reset_password():
             return jsonify({"error": str(e)}), 500
     else:
         return jsonify({"error": "Invalid OTP or it has expired"}), 403
+
+
 
 @auth.route('/user-profile', methods=['GET', 'OPTIONS'])
 @jwt_required()
@@ -819,7 +885,8 @@ def confirm_email():
         user.email_confirm_expiration = None
         db.session.commit()
         # if successful then this will redirect to the front end /email-confirmed route.
-        return jsonify({"message": "Email confirmed successfully"}), 200
+        return redirect(f"{os.environ.get('FRONTEND_URL')}/email-confirmed")
+        #return jsonify({"message": "Email confirmed successfully"}), 200
 
     except Exception as e:
         db.session.rollback()

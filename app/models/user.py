@@ -15,8 +15,9 @@ class User(db.Model):
     password_hash = db.Column(db.String(250), nullable=False)
     email_confirmed = db.Column(db.Boolean, default=False)
     otp = db.Column(db.String(6), nullable=True)
-    recovery_otp_expiration = db.Column(db.DateTime, nullable=True)  # Expiration for OTP used for email confirmation
-    otp_secret = db.Column(db.String(32), nullable=True)  # Must be base32 encoded, this is for password recovery.
+    otp_expiration = db.Column(db.DateTime, nullable=True, default=datetime.utcnow)
+   
+    # email confirmation
     email_confirm_uuid = db.Column(db.String(36), default=str(uuid4()), nullable=True)
     email_confirm_expiration = db.Column(db.DateTime, nullable=True)
 

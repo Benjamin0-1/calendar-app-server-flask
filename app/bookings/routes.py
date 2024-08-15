@@ -124,12 +124,12 @@ def book_date():
         return jsonify({"error": "Failed to create booking", "details": str(e)}), 500
 
 
-@bookings.route('/', methods=['PATCH']) # needs to be changed to PATCH instead.
+@bookings.route('/', methods=['PATCH'])
 @jwt_required()
 def update_booking():
     data = request.json
     property_id = data.get('propertyId')
-    current_date = data.get('currentDate') # date to be updated, it must exists for the specific property selected.
+    current_date = data.get('currentDate') # date to be updated inside of the specific propertyId it belongs to, it must exists for the specific property selected.
     customer_name = data.get('customerName')
     new_date = data.get('newDate')
     #customer_phone_number = data.get('customerPhoneNumber')
