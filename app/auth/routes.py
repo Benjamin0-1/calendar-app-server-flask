@@ -566,7 +566,7 @@ def signup():
 @auth.route('/access-token', methods=['POST'])
 def refresh_token():
     data = request.get_json()
-    refresh_token = data.get('refreshToken') # refreshToken instead of refresh_token.
+    refresh_token = data.get('refreshToken')
 
     if not refresh_token:
         return jsonify({"error": "Refresh token is missing"}), 400
@@ -575,17 +575,17 @@ def refresh_token():
         # Verify the refresh token
         verify_jwt_in_request(refresh_token)
 
-        # Decode the refresh token to get user information
+      
         decoded_token = decode_token(refresh_token)
         current_user_email = decoded_token.get('sub')  # 'sub' is email by default, however I stil added it in the additional_claims as email, so both would work.
 
-        # Retrieve the user from the database
+       
         user = User.query.filter_by(email=current_user_email).first()
 
         if not user:
             return jsonify({"error": "User not found"}), 404
 
-        # Create a new access token
+ 
         additional_claims = {
             'id': user.id,
             'first_name': user.first_name,
@@ -593,7 +593,7 @@ def refresh_token():
         }
         access_token = create_access_token(identity=user.email, additional_claims=additional_claims)
 
-        # Return the new access token and its expiration time
+    
         expires_in = os.environ.get('JWT_ACCESS_TOKEN_EXPIRES') # or 60 minutes if not set.
         #expires_in = app.config['JWT_ACCESS_TOKEN_EXPIRES'].total_seconds()
         return jsonify(access_token=access_token, expires_in=expires_in), 200
@@ -605,7 +605,10 @@ def refresh_token():
     
 
 
-
+# this solution will send the otp and email in the URL sent in the email to the user.
+# the user will then be redirected to the frontend to enter the otp and the new password.
+# the frontend will then send a request to the backend to reset the password.
+# This way the user will have a much better experience.
 @auth.route('/request-password-reset', methods=['POST'])
 def request_password_reset():
     data = request.get_json()
@@ -623,8 +626,8 @@ def request_password_reset():
         return jsonify({"error": "User registered with a third-party provider"}), 403
     
     try:
-        # Generate OTP code
-        otp_code = str(random.randint(100000, 999999))  # Simple random 6-digit OTP
+      
+        otp_code = str(random.randint(100000, 999999))  
         
         print(f"Generated OTP Code: {otp_code}")
         
@@ -632,9 +635,10 @@ def request_password_reset():
         user.otp_expiration = datetime.utcnow() + timedelta(minutes=10)
         db.session.commit()
 
-        reset_password_front_end_link = f'http://{os.environ.get("FRONTEND_URL")}/reset-password'
+        reset_password_front_end_link = f'{os.environ.get("FRONTEND_URL")}/reset-password'
+        front_end_url_with_otp_and_email = f"{reset_password_front_end_link}?email={email}&otp={otp_code}" 
 
-        # Email body with CSS styling
+   
         
 
         send_email(
@@ -699,7 +703,7 @@ def request_password_reset():
                 <p>Your OTP code is:</p>
                 <p class="otp">{otp_code}</p>
                 <p>This OTP expires in 10 minutes.</p>
-                <a href="{reset_password_front_end_link}" class="link">Reset Your Password</a>
+                <a href="{front_end_url_with_otp_and_email}" class="link">Reset Your Password</a>
                 <div class="footer">
                     If you did not request this password reset, please ignore this email.
                 </div>
@@ -713,7 +717,7 @@ def request_password_reset():
 
     except Exception as e:
         db.session.rollback()
-        print(f"Error: {e}")  # Detailed logging of the error
+        print(f"Error: {e}")  
         return jsonify({"error": str(e)}), 500
 
 
@@ -726,8 +730,8 @@ def reset_password():
     data = request.get_json()
     email = data.get('email')
     otp_code = data.get('otp')
-    new_password = data.get('newPassword')  # Changed from newPassword
-    confirm_new_password = data.get('confirmNewPassword')  # Changed from confirmNewPassword
+    new_password = data.get('newPassword') 
+    confirm_new_password = data.get('confirmNewPassword')  
 
     if not email or not otp_code or not new_password or not confirm_new_password:
         return jsonify({"error": "Missing required data"}), 400
@@ -745,14 +749,14 @@ def reset_password():
     if not user.otp:
         return jsonify({"error": "User OTP is missing"}), 500
 
-    # Assuming OTP validation doesn't require otp_secret
+
     if otp_code == user.otp and datetime.utcnow() < user.otp_expiration:
         try:
-            # Update the user password
-            user.set_password(new_password)  # Call the set_password method
+           
+            user.set_password(new_password) 
             print(f"NEW USER PASSWORD HASH: {user.password_hash}")
             
-            # Clean up OTP data
+
             user.otp = None
             user.otp_expiration = None
             db.session.commit()
@@ -783,8 +787,8 @@ def view_user_profile():
 @jwt_required()
 def update_profile():
     data = request.get_json()
-    first_name = data.get('firstName') # firstName
-    last_name = data.get('lastName')   # lastName
+    first_name = data.get('firstName') 
+    last_name = data.get('lastName')   
     
     if not first_name and not last_name:
         return jsonify({"error": "At least one parameter to be updated is required"}), 400
