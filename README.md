@@ -1,6 +1,6 @@
 # Multi Property Booking System
 
-client URL: https://github.com/Benjamin0-1/calendar-app-server-flask
+client URL: https://github.com/Benjamin0-1/calendar-app-client-flask
 
 ## Overview
 
