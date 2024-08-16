@@ -13,6 +13,7 @@ The Property Booking System is a web application designed to streamline property
 - **Email Confirmation**: Requires email verification upon user registration to confirm the validity of email addresses and ensure legitimate access.
 - **Property Management**: Allows users to create and manage multiple properties, including details such as location, description, and amenities.
 - **Booking System**: Enables users to book different dates for their properties with proper validations to prevent overlapping bookings and ensure accurate scheduling.
+- **Alert email**: In case a suspicious login is detected, the user will receive an email being informed of such action, along with other data.
 
 ## Technologies Used
 
