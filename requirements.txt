@@ -32,3 +32,6 @@ SQLAlchemy==2.0.31
 typing_extensions==4.12.2
 Werkzeug==3.0.3
 wrapt==1.16.0
+APScheduler==3.11.3
+Authlib==1.9.1
+firebase-admin==6.9.0
