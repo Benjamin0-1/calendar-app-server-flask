@@ -1,0 +1,8 @@
+{% extends "email/layout.html" %}
+{% block content %}
+        <h1>Welcome to Our Service, {{ first_name }}!</h1>
+        <p>We are excited to have you on board. Please confirm your email address by clicking the link below:</p>
+        <a href="{{ confirm_email_link }}" class="button">Confirm Email</a>
+        <p>This link will expire in 24 hours.</p>
+        <p class="footer">If you have any questions, feel free to reach out to our support team.</p>
+{% endblock %}

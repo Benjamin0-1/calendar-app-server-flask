@@ -1,2 +1,1 @@
-from .email_service import send_email
-from .reminder_service import send_booking_reminders
+from .email_service import send_email, send_template_email

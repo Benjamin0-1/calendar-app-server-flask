@@ -1,4 +1,4 @@
-from .. import db
+from app.extensions import db
 from werkzeug.security import generate_password_hash, check_password_hash # check venv/lib/python3.8/site-packages/werkzeug/security.py
 from datetime import datetime, timedelta
 import pyotp
